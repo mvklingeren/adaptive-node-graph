@@ -1,5 +1,6 @@
 {
   "name": "adaptive-node",
+  "type": "module",
   "version": "1.0.0",
   "description": "adaptive node rout",
   "main": "index.js",
