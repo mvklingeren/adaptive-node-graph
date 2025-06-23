@@ -1,9 +1,9 @@
-import { Graph, createAddNode, createMultiplyNode, OscillatorNode } from '../core';
+import { Graph, createAddNode, createFloat32MultiplyNode, OscillatorNode } from '../core';
 
 const graph = new Graph();
 
 const osc = new OscillatorNode();
-const multiply = createMultiplyNode();
+const multiply = createFloat32MultiplyNode();
 
 graph.addNode(osc);
 graph.addNode(multiply);

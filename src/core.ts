@@ -306,6 +306,17 @@ export class Graph {
     ([a, b]) => b !== 0 ? a / b : 0
    ).setLabel('/');
    
+   // Float32Array Operators
+   export const createFloat32MultiplyNode = () => new AdaptiveNode<Float32Array, Float32Array>(
+    (input) => {
+      const result = new Float32Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        result[i] = input[i] * 0.5;
+      }
+      return result;
+    }
+   ).setLabel('f32*');
+   
    // Logic Operators
    export const createConditionalNode = () => new AdaptiveNode<[boolean, any, any], any>(
     ([condition, ifTrue, ifFalse]) => condition ? ifTrue : ifFalse
