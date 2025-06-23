@@ -45,10 +45,10 @@ const params = {
 };
 
 const samples = await osc.process(params);
-const filtered = await filter.process(samples);
+const filtered = await filter.process(samples!);
 
 // Apply envelope
 const envelopeValues = await Promise.all(
   Array.from({ length: 44100 }, (_, i) => envelope.process(i / 44100))
 );
-const output = filtered.map((sample, i) => sample * envelopeValues[i]);
+const output = filtered?.map((sample, i) => sample * envelopeValues[i]!);
