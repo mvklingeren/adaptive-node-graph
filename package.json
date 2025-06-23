@@ -1,9 +1,21 @@
 {
   "name": "adaptive-node",
   "type": "module",
-  "version": "1.0.0",
-  "description": "adaptive node rout",
-  "main": "index.js",
+  "version": "1.0.2",
+  "description": "adaptive node router",
+  "main": "dist/core.js",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mvklingeren/adaptive-node-graph"
+  },
+  "keywords": [
+    "adaptive",
+    "node",
+    "router"
+  ],
   "scripts": {
     "build": "esbuild src/**/*.ts --bundle --platform=node --target=node18 --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash]",
     "build:watch": "esbuild src/**/*.ts --bundle --platform=node --target=node18 --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash] --watch",
@@ -12,7 +24,7 @@
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "M.M.J.C. van Klingeren",
+  "author": "mvklingeren",
   "license": "MIT",
   "dependencies": {
     "typescript": "^5.8.3"
