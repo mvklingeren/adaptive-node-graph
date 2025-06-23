@@ -620,8 +620,12 @@ async function realtimeStreamDemo() {
       super((event) => event);
 
       // Register processors for different event types
-      this.register(MouseEvent, this.processMouseEvent.bind(this));
-      this.register(KeyboardEvent, this.processKeyboardEvent.bind(this));
+      if (typeof MouseEvent !== "undefined") {
+        this.register(MouseEvent, this.processMouseEvent.bind(this));
+      }
+      if (typeof KeyboardEvent !== "undefined") {
+        this.register(KeyboardEvent, this.processKeyboardEvent.bind(this));
+      }
       this.register(Object, this.processDataEvent.bind(this));
     }
 
@@ -690,13 +694,15 @@ async function realtimeStreamDemo() {
   });
 
   // Simulate event stream
-  const events = [
-    new MouseEvent("click", { clientX: 100, clientY: 200 }),
-    { value: 42 },
-    new KeyboardEvent("keydown", { key: "Enter" }),
-    { value: 38 },
-    { value: 45 },
-  ];
+  const events = [];
+  if (typeof MouseEvent !== "undefined") {
+    events.push(new MouseEvent("click", { clientX: 100, clientY: 200 }));
+  }
+  events.push({ value: 42 });
+  if (typeof KeyboardEvent !== "undefined") {
+    events.push(new KeyboardEvent("keydown", { key: "Enter" }));
+  }
+  events.push({ value: 38 }, { value: 45 });
 
   for (const event of events) {
     await loadBalancer.process(event);
