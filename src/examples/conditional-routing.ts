@@ -26,5 +26,9 @@ graph
 
 // Connect: sensor -> threshold check -> router
 const sensorOutput = await tempSensor.process(null);
-const isHigh = await threshold.process(sensorOutput);
-await router.process([isHigh, sensorOutput]);
+if (sensorOutput !== null) {
+  const isHigh = await threshold.process(sensorOutput);
+  if (isHigh !== null) {
+    await router.process([isHigh, sensorOutput]);
+  }
+}

@@ -1,4 +1,9 @@
-import { Graph, createAddNode, createFloat32MultiplyNode, OscillatorNode } from '../core';
+import {
+  Graph,
+  createAddNode,
+  createFloat32MultiplyNode,
+  OscillatorNode,
+} from "../core";
 
 const graph = new Graph();
 
@@ -12,5 +17,5 @@ graph.connect(osc, multiply);
 const result = await graph.execute({
   frequency: 440,
   amplitude: 0.5,
-  sampleRate: 44100
+  sampleRate: 44100,
 });

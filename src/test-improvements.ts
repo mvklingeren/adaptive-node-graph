@@ -1,5 +1,5 @@
 // test-improvements.ts
-// Demonstrates the new features in core-improved.ts
+// Demonstrates the new features in core.ts
 
 import {
   AdaptiveNode,
@@ -7,15 +7,12 @@ import {
   TestNode,
   createDelayNode,
   createThrottleNode,
-  createDebounceNode,
   createErrorLoggerNode,
   createErrorRecoveryNode,
-  createAddNode,
   createLoadBalancerNode,
   createCacheNode,
   SubGraphNode,
-  NodeError
-} from './core-improved';
+} from "./core";
 
 // ============================================================================
 // 1. Error Handling Demo
@@ -323,3 +320,6 @@ async function runAllDemos() {
 
 // Export for use in other modules
 export { runAllDemos };
+
+// Run the demos when this file is executed directly
+runAllDemos().catch(console.error);
