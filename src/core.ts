@@ -135,7 +135,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       }
     }
 
-    if (this.initialValue !== undefined) {
+    if (input === undefined) {
       input = this.initialValue;
     }
     
@@ -789,11 +789,11 @@ export const createRouterNode = () => new AdaptiveNode<any, { route: string; dat
 export function createLoadBalancerNode<T, U>(
   nodes: AdaptiveNode<T, U>[],
   strategy: 'round-robin' | 'random' | 'least-loaded' = 'round-robin'
-): AdaptiveNode<T, U> {
+): AdaptiveNode<T, U | null> {
   let index = 0;
   const nodeHealth = new Map(nodes.map(n => [n.id, true]));
   
-  const loadBalancer = new AdaptiveNode<T, U>(async (input) => {
+  const loadBalancer = new AdaptiveNode<T, U | null>(async (input) => {
     const healthyNodes = nodes.filter(n => nodeHealth.get(n.id));
     if (healthyNodes.length === 0) {
       throw new Error('No healthy nodes available');
@@ -816,9 +816,6 @@ export function createLoadBalancerNode<T, U>(
     
     try {
       const result = await selectedNode.process(input);
-      if (result === null) {
-        throw new Error('Node returned null');
-      }
       return result;
     } catch (error) {
       nodeHealth.set(selectedNode.id, false);
@@ -829,9 +826,6 @@ export function createLoadBalancerNode<T, U>(
         if (retryNodes.length > 0) {
           const retryBalancer = createLoadBalancerNode(retryNodes, strategy);
           const retryResult = await retryBalancer.process(input);
-          if (retryResult === null) {
-            throw new Error('Retry returned null');
-          }
           return retryResult;
         }
       }
