@@ -57,6 +57,8 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   
   // Store last result for sub-graphs
   private lastResult: TOutput | null = null;
+  private code: string | null = null;
+  private initialValue: any = null;
   
   public readonly id: string = Math.random().toString(36).substr(2, 9);
   public readonly visual: NodeVisual = {
@@ -122,6 +124,21 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   }
   
   async process(input: TInput): Promise<TOutput | null> {
+    if (this.code && this.code.trim() !== '') {
+      try {
+        // eslint-disable-next-line no-eval
+        const result = eval(this.code);
+        return result;
+      } catch (error) {
+        this.handleError(error as Error, input);
+        return null;
+      }
+    }
+
+    if (this.initialValue !== undefined) {
+      input = this.initialValue;
+    }
+    
     // Circuit breaker check
     if (this.isCircuitOpen) {
       const now = Date.now();
@@ -245,6 +262,16 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   
   setLabel(label: string): this {
     this.visual.label = label;
+    return this;
+  }
+
+  setCode(code: string): this {
+    this.code = code;
+    return this;
+  }
+
+  setInitialValue(value: any): this {
+    this.initialValue = value;
     return this;
   }
   
