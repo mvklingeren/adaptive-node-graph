@@ -1,6 +1,3 @@
-"use client";
-// @ts-nocheck
-
 // core-improved.ts
 // Enhanced Core library for the Adaptive Node with Routing System
 // Implements: Error Handling, Type Safety, Async Flow Control, and more
@@ -20,14 +17,6 @@ export interface Inlet<T = any> {
 export interface Outlet<T = any> {
   send(data: T, graph?: Graph, hooks?: ExecutionHooks): void;
   connections: Connection<T, any>[];
-}
-
-export interface NodeVisual {
-  x: number;
-  y: number;
-  label: string;
-  inlets: Inlet[];
-  outlets: Outlet[];
 }
 
 // Error handling types
@@ -67,23 +56,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   protected lastResult: TOutput | null = null;
   public isEmitting = true;
   public onProcess: ((id: string, data: any) => void) | null = null;
-  public code: string | null = null;
   public initialValue: any = null;
-  public initialValueType:
-    | "string"
-    | "number"
-    | "boolean"
-    | "json"
-    | "floatarray" = "string";
 
-  public readonly id: string = Math.random().toString(36).substr(2, 9);
-  public readonly visual: NodeVisual = {
-    x: 0,
-    y: 0,
-    label: "",
-    inlets: [],
-    outlets: [],
-  };
+  public readonly id: string;
+  public name: string;
+  public inlets: Inlet<TInput>[] = [];
+  public outlets: Outlet<any>[] = [];
 
   // Type markers for compile-time type checking
   readonly inputType!: TInput;
@@ -100,35 +78,27 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     this.maxConcurrent = options.maxConcurrent || 10;
     this.circuitBreakerThreshold = options.circuitBreakerThreshold || 5;
     this.circuitBreakerResetTime = options.circuitBreakerResetTime || 60000;
-    this.setupInletsOutlets();
+    this.id = `node_${crypto.randomUUID()}`;
+    this.name = this.constructor.name;
+    this.setupInOut();
   }
 
-  private setupInletsOutlets(): void {
-    // Default: 1 inlet, 2 outlets (data + error)
-    this.visual.inlets = [
-      {
-        accept: (data: TInput) => this.process(data),
-      },
-    ];
+  private setupInOut(): void {
+    this.inlets = [{ accept: (data: TInput) => this.process(data) }];
 
     const dataOutletConnections: Connection<TOutput, any>[] = [];
     const errorOutletConnections: Connection<NodeError, any>[] = [];
 
-    this.visual.outlets = [
-      // Data outlet
+    this.outlets = [
       {
         send: async (data: TOutput, graph?: Graph, hooks?: ExecutionHooks) => {
-          console.log(`Node ${this.id} data outlet send called with hooks:`, hooks ? 'hooks present' : 'no hooks');
-          console.log(`Node ${this.id} has ${dataOutletConnections.length} connections`);
-          const promises = dataOutletConnections.map((conn) => {
-            console.log(`Node ${this.id} sending data to connection ${conn.source.id} -> ${conn.target.id}`);
-            return conn.transfer(data, graph, hooks);
-          });
+          const promises = dataOutletConnections.map((conn) =>
+            conn.transfer(data, graph, hooks)
+          );
           await Promise.all(promises);
         },
         connections: dataOutletConnections,
       },
-      // Error outlet
       {
         send: (error: NodeError, graph?: Graph, hooks?: ExecutionHooks) => {
           errorOutletConnections.forEach((conn) => {
@@ -153,30 +123,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     graph?: Graph,
     hooks?: ExecutionHooks
   ): Promise<TOutput | null> {
-    if (graph?.isStopped) {
-      return null;
-    }
+    if (graph?.isStopped) return null;
 
-    console.log(`Node ${this.id} process called with hooks:`, hooks ? 'hooks present' : 'no hooks');
-    
-    // Make a local copy of hooks to ensure it's not lost in async operations
-    const localHooks = hooks;
-    
-    localHooks?.onNodeStart?.(this.id);
+    hooks?.onNodeStart?.(this.id);
 
     if (this.isEmitting && this.onProcess) {
       this.onProcess(this.id, input);
-    }
-
-    if (this.code && this.code.trim() !== "") {
-      try {
-        // eslint-disable-next-line no-eval
-        const result = eval(this.code);
-        return result;
-      } catch (error) {
-        this.handleError(error as Error, input, graph, hooks);
-        return null;
-      }
     }
 
     if (input === null && this.initialValue !== null) {
@@ -190,7 +142,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         this.isCircuitOpen = false;
         this.errorCount = 0;
       } else {
-        this.sendError(new Error("Circuit breaker is open"), input, graph, hooks);
+        this.sendError(
+          new Error("Circuit breaker is open"),
+          input,
+          graph,
+          hooks
+        );
         return null;
       }
     }
@@ -201,14 +158,13 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     }
 
     this.processing++;
-    
+
     let result: TOutput | null = null;
     try {
       result = await this.executeProcessor(input, graph, hooks);
 
-      // Send to data outlet
-      if (this.visual.outlets[0] && result !== null) {
-        await this.visual.outlets[0].send(result, graph, hooks);
+      if (this.outlets[0] && result !== null) {
+        await this.outlets[0].send(result, graph, hooks);
       }
 
       return result;
@@ -217,18 +173,17 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       return null;
     } finally {
       this.processing--;
-      const nextInQueue = this.queue.shift();
-      if (nextInQueue) nextInQueue();
-      
-      // Use the local copy of hooks to ensure it's not lost
-      localHooks?.onNodeComplete?.(this.id, result);
+      if (this.queue.length > 0) {
+        this.queue.shift()?.();
+      }
+      hooks?.onNodeComplete?.(this.id, result);
     }
   }
 
   protected async executeProcessor(
     input: TInput,
-    graph?: Graph,
-    hooks?: ExecutionHooks
+    _graph?: Graph,
+    _hooks?: ExecutionHooks
   ): Promise<TOutput> {
     const start = performance.now();
     let processorName = "default";
@@ -236,7 +191,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     // Type-based processor selection
     let selectedProcessor = this.defaultProcessor;
     for (const [type, processor] of this.processors) {
-      if (input instanceof type) {
+      if (input instanceof (type as any)) {
         selectedProcessor = processor;
         processorName = type.name;
         break;
@@ -255,7 +210,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     return result;
   }
 
-  protected handleError(error: Error, input: TInput, graph?: Graph, hooks?: ExecutionHooks): void {
+  protected handleError(
+    error: Error,
+    input: TInput,
+    graph?: Graph,
+    hooks?: ExecutionHooks
+  ): void {
     this.errorCount++;
     this.lastErrorTime = Date.now();
 
@@ -270,7 +230,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     this.sendError(error, input, graph, hooks);
   }
 
-  protected sendError(error: Error, input: TInput, graph?: Graph, hooks?: ExecutionHooks): void {
+  protected sendError(
+    error: Error,
+    input: TInput,
+    graph?: Graph,
+    hooks?: ExecutionHooks
+  ): void {
     const nodeError: NodeError = {
       error,
       input,
@@ -278,15 +243,10 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       timestamp: Date.now(),
     };
 
-    // Send to error outlet if connected
-    if (
-      this.visual.outlets[1] &&
-      this.visual.outlets[1].connections.length > 0
-    ) {
-      this.visual.outlets[1].send(nodeError, graph, hooks);
+    if (this.outlets[1]?.connections.length > 0) {
+      this.outlets[1].send(nodeError, graph, hooks);
     } else {
-      // Log if no error handler connected
-      console.error(`Unhandled error in node ${this.id}:`, error);
+      console.error(`Unhandled error in node ${this.id}:`, nodeError);
     }
   }
 
@@ -321,31 +281,13 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     return this.lastResult;
   }
 
-  setPosition(x: number, y: number): this {
-    this.visual.x = x;
-    this.visual.y = y;
-    return this;
-  }
-
-  setLabel(label: string): this {
-    this.visual.label = label;
-    return this;
-  }
-
-  setCode(code: string): this {
-    this.code = code;
+  setName(name: string): this {
+    this.name = name;
     return this;
   }
 
   setInitialValue(value: any): this {
     this.initialValue = value;
-    return this;
-  }
-
-  setInitialValueType(
-    type: "string" | "number" | "boolean" | "json" | "floatarray"
-  ): this {
-    this.initialValueType = type;
     return this;
   }
 
@@ -385,8 +327,7 @@ export class Connection<TData, TTransformed = TData> {
     public readonly targetInlet: number,
     private transformer?: Processor<TData, TTransformed>
   ) {
-    // Register this connection with the source outlet
-    this.source.visual.outlets[this.sourceOutlet].connections.push(this);
+    this.source.outlets[this.sourceOutlet].connections.push(this);
   }
 
   async transfer(
@@ -395,34 +336,30 @@ export class Connection<TData, TTransformed = TData> {
     hooks?: ExecutionHooks
   ): Promise<void> {
     try {
-      console.log(`Connection ${this.source.id} -> ${this.target.id} transfer called with hooks:`, hooks ? 'hooks present' : 'no hooks');
-      const transformed = this.transformer
+      const transformedData = this.transformer
         ? await this.transformer(data)
         : (data as unknown as TTransformed);
-
-      await this.target.process(transformed, graph, hooks);
+      await this.target.process(transformedData, graph, hooks);
     } catch (error) {
-      console.error(
-        `Error in connection ${this.source.id} -> ${this.target.id}:`,
-        error
-      );
-      // Send error to target's error handling
-      if (this.target.visual.outlets[1]) {
-        this.target.visual.outlets[1].send({
-          error: error as Error,
-          input: data,
-          nodeId: `connection-${this.source.id}-${this.target.id}`,
-          timestamp: Date.now(),
-        });
-      }
+      const connError: NodeError = {
+        error: error as Error,
+        input: data,
+        nodeId: `connection-${this.source.id}-${this.target.id}`,
+        timestamp: Date.now(),
+      };
+      console.error(`Error in ${connError.nodeId}:`, connError.error);
+      // Forward the error to the target's error outlet
+      this.target.outlets[1]?.send(connError, graph, hooks);
     }
   }
 
   disconnect(): void {
-    const outlet = this.source.visual.outlets[this.sourceOutlet];
-    const index = outlet.connections.indexOf(this);
-    if (index > -1) {
-      outlet.connections.splice(index, 1);
+    const outlet = this.source.outlets[this.sourceOutlet];
+    if (outlet) {
+      const index = outlet.connections.indexOf(this);
+      if (index > -1) {
+        outlet.connections.splice(index, 1);
+      }
     }
   }
 }
@@ -525,7 +462,8 @@ export class Graph {
       // Visit dependencies first
       for (const conn of this.connections) {
         if (conn.target.id === node.id && conn.sourceOutlet === 0) {
-          visit(conn.source);
+          const sourceNode = this.nodes.get(conn.source.id);
+          if (sourceNode) visit(sourceNode);
         }
       }
 
@@ -545,12 +483,9 @@ export class Graph {
     hooks?: ExecutionHooks
   ): Promise<any> {
     this.isStopped = false;
-    console.log(`Graph.execute called with hooks:`, hooks ? 'hooks present' : 'no hooks');
-    
     if (startNodeId) {
       const startNode = this.nodes.get(startNodeId);
-      if (!startNode) throw new Error(`Node ${startNodeId} not found`);
-      console.log(`Executing start node ${startNodeId}`);
+      if (!startNode) throw new Error(`Start node ${startNodeId} not found`);
       return startNode.process(input, this, hooks);
     }
 
@@ -570,13 +505,7 @@ export class Graph {
         ? [this.executionOrder[0]]
         : [];
 
-    console.log(`Found ${entryNodes.length} entry nodes:`, entryNodes.map(node => node.id));
-    
-    // Execute all entry nodes with the initial input
-    const promises = entryNodes.map((node) => {
-      console.log(`Executing entry node ${node.id}`);
-      return node.process(input, this, hooks);
-    });
+    const promises = entryNodes.map((node) => node.process(input, this, hooks));
     await Promise.all(promises);
 
     // Return the result from the last node in the execution order
@@ -637,23 +566,6 @@ export class Graph {
 
     return deps;
   }
-
-  toJSON(): object {
-    return {
-      nodes: Array.from(this.nodes.values()).map((node) => ({
-        id: node.id,
-        label: node.visual.label,
-        x: node.visual.x,
-        y: node.visual.y,
-      })),
-      connections: Array.from(this.connections).map((conn) => ({
-        source: conn.source.id,
-        sourceOutlet: conn.sourceOutlet,
-        target: conn.target.id,
-        targetInlet: conn.targetInlet,
-      })),
-    };
-  }
 }
 
 // ============================================================================
@@ -664,7 +576,7 @@ export const createDelayNode = (ms: number) =>
   new AdaptiveNode(async (input: any) => {
     await new Promise((resolve) => setTimeout(resolve, ms));
     return input;
-  }).setLabel(`delay(${ms}ms)`);
+  }).setName(`delay(${ms}ms)`);
 
 export const createThrottleNode = (ms: number) => {
   let lastEmit = 0;
@@ -675,25 +587,21 @@ export const createThrottleNode = (ms: number) => {
       return input;
     }
     return null; // skip
-  }).setLabel(`throttle(${ms}ms)`);
+  }).setName(`throttle(${ms}ms)`);
 };
 
 export const createDebounceNode = (ms: number) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let resolver: ((value: any) => void) | null = null;
 
   return new AdaptiveNode(async (input: any) => {
     if (timeoutId) clearTimeout(timeoutId);
-
     return new Promise((resolve) => {
-      resolver = resolve;
       timeoutId = setTimeout(() => {
         resolve(input);
         timeoutId = null;
-        resolver = null;
       }, ms);
     });
-  }).setLabel(`debounce(${ms}ms)`);
+  }).setName(`debounce(${ms}ms)`);
 };
 
 // ============================================================================
@@ -711,41 +619,13 @@ export const createErrorLoggerNode = () =>
       error.input
     );
     return error;
-  }).setLabel("errorLogger");
+  }).setName("errorLogger");
 
 export const createErrorRecoveryNode = <T>(defaultValue: T) =>
-  new AdaptiveNode<NodeError, T>((error) => {
-    console.warn(`Recovering from error with default value:`, defaultValue);
+  new AdaptiveNode<NodeError, T>((_error) => {
+    console.warn(`Recovering from error. Returning default value.`);
     return defaultValue;
-  }).setLabel("errorRecovery");
-
-export const createRetryNode = <T>(
-  maxRetries: number = 3,
-  delayMs: number = 1000
-) => {
-  const retryMap = new Map<string, number>();
-
-  return new AdaptiveNode<NodeError, T | null>(async (error) => {
-    const key = `${error.nodeId}-${JSON.stringify(error.input)}`;
-    const retries = retryMap.get(key) || 0;
-
-    if (retries < maxRetries) {
-      retryMap.set(key, retries + 1);
-      await new Promise((resolve) =>
-        setTimeout(resolve, delayMs * (retries + 1))
-      );
-
-      // Attempt to reprocess in the original node
-      // This would need access to the original node - simplified here
-      console.log(`Retrying (${retries + 1}/${maxRetries})...`);
-      return null;
-    } else {
-      console.error(`Max retries (${maxRetries}) exceeded`);
-      retryMap.delete(key);
-      return null;
-    }
-  }).setLabel(`retry(${maxRetries})`);
-};
+  }).setName("errorRecovery");
 
 // ============================================================================
 // Testing Utilities
@@ -775,12 +655,10 @@ export class TestNode<T> extends AdaptiveNode<T, T> {
       return result;
     };
 
-    // Connect error tracking
-    this.visual.outlets[1].send = (error: NodeError) => {
+    this.outlets[1].send = (error: NodeError) => {
       this.errors.push(error);
     };
-
-    this.setLabel("test");
+    this.setName("test");
   }
 
   reset(): void {
@@ -849,9 +727,8 @@ export class SubGraphNode<TInput = any, TOutput = any> extends AdaptiveNode<
     private inputNodeId?: string,
     private outputNodeId?: string
   ) {
-    // We pass a dummy processor to the super constructor, as we're overriding executeProcessor.
     super(async () => null as unknown as TOutput);
-    this.setLabel("subgraph");
+    this.setName("subgraph");
   }
 
   protected async executeProcessor(
@@ -875,7 +752,7 @@ export class SubGraphNode<TInput = any, TOutput = any> extends AdaptiveNode<
     } else {
       finalResult = result;
     }
-    
+
     // Store the final result in the SubGraphNode itself
     this.lastResult = finalResult;
     return finalResult;
@@ -890,26 +767,26 @@ export class SubGraphNode<TInput = any, TOutput = any> extends AdaptiveNode<
 // Enhanced Core Node Library (keeping originals, adding new ones)
 // ============================================================================
 
-// Math Operators (original)
+// Math Operators
 export const createAddNode = () =>
   new AdaptiveNode<number[], number>((inputs) =>
     inputs.reduce((a, b) => a + b, 0)
-  ).setLabel("+");
+  ).setName("+");
 
 export const createMultiplyNode = () =>
   new AdaptiveNode<number[], number>((inputs) =>
     inputs.reduce((a, b) => a * b, 1)
-  ).setLabel("*");
+  ).setName("*");
 
 export const createSubtractNode = () =>
-  new AdaptiveNode<[number, number], number>(([a, b]) => a - b).setLabel("-");
+  new AdaptiveNode<[number, number], number>(([a, b]) => a - b).setName("-");
 
 export const createDivideNode = () =>
   new AdaptiveNode<[number, number], number>(([a, b]) =>
     b !== 0 ? a / b : 0
-  ).setLabel("/");
+  ).setName("/");
 
-// Float32Array Operators (original)
+// Float32Array Operators
 export const createFloat32MultiplyNode = () =>
   new AdaptiveNode<Float32Array, Float32Array>((input) => {
     const result = new Float32Array(input?.length);
@@ -917,62 +794,68 @@ export const createFloat32MultiplyNode = () =>
       result[i] = input[i] * 0.5;
     }
     return result;
-  }).setLabel("f32*");
+  }).setName("f32*");
 
-// Logic Operators (original)
+// Logic Operators
 export const createConditionalNode = () =>
   new AdaptiveNode<[boolean, any, any], any>(([condition, ifTrue, ifFalse]) =>
     condition ? ifTrue : ifFalse
-  ).setLabel("?");
+  ).setName("?");
 
 export const createAndNode = () =>
   new AdaptiveNode<boolean[], boolean>((inputs) =>
     inputs.every(Boolean)
-  ).setLabel("&&");
+  ).setName("&&");
 
 export const createOrNode = () =>
   new AdaptiveNode<boolean[], boolean>((inputs) =>
     inputs.some(Boolean)
-  ).setLabel("||");
+  ).setName("||");
 
 export const createNotNode = () =>
-  new AdaptiveNode<boolean, boolean>((input) => !input).setLabel("!");
+  new AdaptiveNode<boolean, boolean>((input) => !input).setName("!");
 
-// Data Flow Operators (enhanced)
+// Data Flow Operators
 export const createGateNode = () =>
   new AdaptiveNode<[boolean, any], any | null>(([pass, data]) =>
     pass ? data : null
-  ).setLabel("gate");
+  ).setName("gate");
 
 export const createMergeNode = () =>
   new AdaptiveNode<any[], any[]>((inputs) =>
     inputs.filter((x) => x !== null && x !== undefined)
-  ).setLabel("merge");
+  ).setName("merge");
 
 export const createSplitNode = (count: number = 2) => {
-  const node = new AdaptiveNode<any, any[]>((input) =>
-    Array(count).fill(input)
-  ).setLabel("split");
+  const node = new AdaptiveNode<any, any>(async (input) => {
+    // The processor sends the input to all data outlets.
+    const promises = node.outlets
+      .slice(0, count) // Only send to the data outlets
+      .map((outlet) => outlet.send(input));
+    await Promise.all(promises);
+    // The split node itself doesn't "return" a single value in the traditional sense.
+    // It forwards the input to multiple downstream paths.
+    // We return the original input for potential chaining if needed.
+    return input;
+  }).setName("split");
 
-  // Create multiple outlets (plus error outlet)
-  node.visual.outlets = [
-    ...Array(count)
-      .fill(null)
-      .map(() => ({
-        send: () => {},
-        connections: [],
-      })),
-    // Error outlet
-    {
-      send: () => {},
-      connections: [],
-    },
-  ];
+  // Create specified number of data outlets + 1 error outlet
+  const dataOutlets: Outlet<any>[] = Array.from({ length: count }, () => ({
+    send: async () => {}, // This will be overwritten by the connection
+    connections: [],
+  }));
+
+  const errorOutlet: Outlet<NodeError> = {
+    send: () => {},
+    connections: [],
+  };
+
+  node.outlets = [...dataOutlets, errorOutlet];
 
   return node;
 };
 
-// Smart Routing (original)
+// Smart Routing
 export const createRouterNode = () =>
   new AdaptiveNode<any, { route: string; data: any }>((input) => ({
     route: "default",
@@ -986,9 +869,9 @@ export const createRouterNode = () =>
       if ("buffer" in obj) return { route: "binary", data: obj };
       return { route: "object", data: obj };
     })
-    .setLabel("router");
+    .setName("router");
 
-// Load Balancer (enhanced with health checks)
+// Load Balancer
 export function createLoadBalancerNode<T, U>(
   nodes: AdaptiveNode<T, U>[],
   strategy: "round-robin" | "random" | "least-loaded" = "round-robin"
@@ -997,7 +880,6 @@ export function createLoadBalancerNode<T, U>(
   const nodeHealth = new Map(nodes.map((n) => [n.id, true]));
 
   const loadBalancer = new AdaptiveNode<T, U>(async (input) => {
-    // Get a list of currently healthy nodes for this attempt
     let nodesToTry = nodes.filter((n) => nodeHealth.get(n.id));
     if (nodesToTry.length === 0) {
       throw new Error("No healthy nodes available");
@@ -1013,9 +895,9 @@ export function createLoadBalancerNode<T, U>(
           selectedNode = nodesToTry[nodeIndexInTryList];
           break;
         case "least-loaded":
-          // This is a simplified version. A real implementation would need metrics.
+          // Simplified: a real implementation would need performance metrics.
           nodeIndexInTryList = 0;
-          selectedNode = nodesToTry[nodeIndexInTryList];
+          selectedNode = nodesToTry[0];
           break;
         default: // round-robin
           nodeIndexInTryList = index % nodesToTry.length;
@@ -1026,43 +908,36 @@ export function createLoadBalancerNode<T, U>(
 
       try {
         const result = await selectedNode.process(input);
-        // A null result might be a valid outcome for some nodes,
-        // but the original implementation treated it as an error.
         if (result === null) {
           throw new Error(`Node ${selectedNode.id} returned null`);
         }
-        return result; // Success, exit the loop
+        return result;
       } catch (error) {
         console.warn(
           `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
           error
         );
         nodeHealth.set(selectedNode.id, false);
-        // Remove the failed node from our list for this attempt and retry
         nodesToTry.splice(nodeIndexInTryList, 1);
       }
     }
 
-    // If we exit the loop, all healthy nodes failed for this input
     throw new Error("All available nodes failed to process the input.");
   });
 
-  // Expose worker nodes for visualization
-  (loadBalancer as any).workerNodes = nodes;
-
-  return loadBalancer.setLabel(`loadBalance(${strategy})`);
+  return loadBalancer.setName(`loadBalance(${strategy})`);
 }
 
-// Parallel Processor (fixed type issue)
+// Parallel Processor
 export function createParallelNode<T, U>(
   nodes: AdaptiveNode<T, U>[]
 ): AdaptiveNode<T, (U | null)[]> {
   return new AdaptiveNode<T, (U | null)[]>(async (input) => {
     return Promise.all(nodes.map((node) => node.process(input)));
-  }).setLabel("parallel");
+  }).setName("parallel");
 }
 
-// Cache Node (fixed implementation)
+// Cache Node
 export function createCacheNode<T, U>(
   processor: Processor<T, U>,
   ttl: number = 1000,
@@ -1078,13 +953,9 @@ export function createCacheNode<T, U>(
       return cached.value;
     }
 
-    // Process with provided processor
     const result = await processor(input);
-
-    // Add to cache
     cache.set(key, { value: result, timestamp: Date.now() });
 
-    // Enforce size limit (LRU)
     if (cache.size > maxSize) {
       const firstKey = cache.keys().next().value;
       if (firstKey !== undefined) {
@@ -1092,19 +963,22 @@ export function createCacheNode<T, U>(
       }
     }
 
-    // Clean expired entries
-    for (const [k, v] of cache.entries()) {
-      if (Date.now() - v.timestamp > ttl) {
-        cache.delete(k);
+    // Clean expired entries periodically
+    if (Math.random() < 0.1) {
+      // 10% chance to clean
+      for (const [k, v] of cache.entries()) {
+        if (Date.now() - v.timestamp > ttl) {
+          cache.delete(k);
+        }
       }
     }
 
     return result;
-  }).setLabel(`cache(${ttl}ms)`);
+  }).setName(`cache(${ttl}ms)`);
 }
 
 // ============================================================================
-// Oscillator Node (original)
+// Oscillator Node
 // ============================================================================
 
 export interface OscillatorParams {
@@ -1113,68 +987,59 @@ export interface OscillatorParams {
   sampleRate: number;
   length?: number;
   waveform?: "sine" | "square" | "sawtooth" | "triangle";
+  phase?: number; // Allow passing in phase
 }
 
 export class OscillatorNode extends AdaptiveNode<
   OscillatorParams,
-  Float32Array
+  { samples: Float32Array; nextPhase: number }
 > {
-  private phase = 0;
-
   constructor() {
     super((params: OscillatorParams) => {
-      const samples = new Float32Array(params?.length || 128);
-      const phaseIncrement =
-        (2 * Math.PI * params?.frequency) / params?.sampleRate;
+      const {
+        frequency,
+        amplitude,
+        sampleRate,
+        length = 128,
+        waveform = "sine",
+        phase = 0,
+      } = params;
 
-      if (!params) {
-        return samples;
-      }
+      const samples = new Float32Array(length);
+      const phaseIncrement = (2 * Math.PI * frequency) / sampleRate;
+      let currentPhase = phase;
 
-      switch (params.waveform || "sine") {
-        case "sine":
-          for (let i = 0; i < samples.length; i++) {
-            samples[i] = Math.sin(this.phase) * params.amplitude;
-            this.phase += phaseIncrement;
-          }
-          break;
-
-        case "square":
-          for (let i = 0; i < samples.length; i++) {
-            samples[i] = (Math.sin(this.phase) > 0 ? 1 : -1) * params.amplitude;
-            this.phase += phaseIncrement;
-          }
-          break;
-
-        case "sawtooth":
-          for (let i = 0; i < samples.length; i++) {
-            samples[i] = (this.phase / Math.PI - 1) * params.amplitude;
-            this.phase += phaseIncrement;
-            if (this.phase >= 2 * Math.PI) this.phase -= 2 * Math.PI;
-          }
-          break;
-
-        case "triangle":
-          for (let i = 0; i < samples.length; i++) {
+      for (let i = 0; i < samples.length; i++) {
+        switch (waveform) {
+          case "sine":
+            samples[i] = Math.sin(currentPhase) * amplitude;
+            break;
+          case "square":
+            samples[i] = (Math.sin(currentPhase) > 0 ? 1 : -1) * amplitude;
+            break;
+          case "sawtooth":
+            samples[i] = (currentPhase / Math.PI - 1) * amplitude;
+            break;
+          case "triangle":
             samples[i] =
               (2 *
                 Math.abs(
                   2 *
-                    (this.phase / (2 * Math.PI) -
-                      Math.floor(this.phase / (2 * Math.PI) + 0.5))
+                    (currentPhase / (2 * Math.PI) -
+                      Math.floor(currentPhase / (2 * Math.PI) + 0.5))
                 ) -
                 1) *
-              params.amplitude;
-            this.phase += phaseIncrement;
-          }
-          break;
+              amplitude;
+            break;
+        }
+        currentPhase += phaseIncrement;
       }
 
-      this.phase = this.phase % (2 * Math.PI);
-      return samples;
+      const nextPhase = currentPhase % (2 * Math.PI);
+      return { samples, nextPhase };
     });
 
-    this.setLabel("oscillator");
+    this.setName("oscillator");
   }
 }
 
@@ -1184,26 +1049,9 @@ export class OscillatorNode extends AdaptiveNode<
 
 export function createProcessor<TIn, TOut>(
   fn: Processor<TIn, TOut>,
-  label?: string
+  name?: string
 ): AdaptiveNode<TIn, TOut> {
   const node = new AdaptiveNode(fn);
-  if (label) node.setLabel(label);
+  if (name) node.setName(name);
   return node;
-}
-
-export function chain<A, B, C>(
-  first: AdaptiveNode<A, B>,
-  second: AdaptiveNode<B, C>
-): AdaptiveNode<A, C> {
-  return new AdaptiveNode<A, C>(async (input: A) => {
-    const intermediate = await first.process(input);
-    if (intermediate === null) {
-      throw new Error('Intermediate result was null');
-    }
-    const result = await second.process(intermediate);
-    if (result === null) {
-      throw new Error('Second node result was null');
-    }
-    return result;
-  }).setLabel(`${first.visual.label} → ${second.visual.label}`);
 }

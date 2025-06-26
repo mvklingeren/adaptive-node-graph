@@ -29,7 +29,7 @@ async function errorHandlingDemo() {
       throw new Error(`Value ${input} is too high!`);
     }
     return input * 2;
-  }).setLabel('unreliable');
+  }).setName('unreliable');
   
   // Error logger
   const errorLogger = createErrorLoggerNode();
@@ -92,7 +92,7 @@ async function flowControlDemo() {
       return input * 2;
     },
     { maxConcurrent: 2 } // Only 2 concurrent operations
-  ).setLabel('slowNode');
+  ).setName('slowNode');
   
   // Fire multiple requests
   const promises = [];
@@ -182,7 +182,7 @@ async function circuitBreakerDemo() {
       circuitBreakerThreshold: 3,
       circuitBreakerResetTime: 2000 
     }
-  ).setLabel('failing');
+  ).setName('failing');
   
   const errorLogger = createErrorLoggerNode();
   const graph = new Graph();
@@ -217,9 +217,9 @@ console.log('\n=== Load Balancer Demo ===');
 async function loadBalancerDemo() {
   // Create worker nodes
   const workers = [
-    new AdaptiveNode<number, string>((n) => `Worker1: ${n}`).setLabel('worker1'),
-    new AdaptiveNode<number, string>((n) => `Worker2: ${n}`).setLabel('worker2'),
-    new AdaptiveNode<number, string>((n) => `Worker3: ${n}`).setLabel('worker3')
+    new AdaptiveNode<number, string>((n) => `Worker1: ${n}`).setName('worker1'),
+    new AdaptiveNode<number, string>((n) => `Worker2: ${n}`).setName('worker2'),
+    new AdaptiveNode<number, string>((n) => `Worker3: ${n}`).setName('worker3')
   ];
   
   // Create load balancer
@@ -281,8 +281,8 @@ console.log('\n=== Sub-graph Demo ===');
 async function subGraphDemo() {
   // Create a sub-graph that adds numbers
   const subGraph = new Graph();
-  const add1 = new AdaptiveNode<number, number>((n) => n + 1).setLabel('add1');
-  const add2 = new AdaptiveNode<number, number>((n) => n + 2).setLabel('add2');
+  const add1 = new AdaptiveNode<number, number>((n) => n + 1).setName('add1');
+  const add2 = new AdaptiveNode<number, number>((n) => n + 2).setName('add2');
   
   subGraph.addNode(add1);
   subGraph.addNode(add2);

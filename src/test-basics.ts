@@ -39,7 +39,7 @@ async function audioProcessingDemo() {
     }
 
     return filtered;
-  }).setLabel("lowpass");
+  }).setName("lowpass");
 
   // Build synthesizer graph
   const graph = new Graph();
@@ -63,14 +63,18 @@ async function audioProcessingDemo() {
     waveform: "sawtooth" as const,
   };
 
-  const samples = await osc.process(params);
-  const filtered = await filter.process(samples!);
+  const oscResult = await osc.process(params);
+  if (!oscResult) {
+    console.error("Audio processing failed: Oscillator did not produce output.");
+    return;
+  }
+  const filtered = await filter.process(oscResult.samples);
 
   // Apply envelope
   const envelopeValues = await Promise.all(
     Array.from({ length: 44100 }, (_, i) => envelope.process(i / 44100))
   );
-  const output = filtered?.map((sample, i) => sample * envelopeValues[i]!);
+  const output = filtered?.map((sample, i) => sample * (envelopeValues[i] ?? 0));
   console.log("Audio processing demo complete.");
 }
 
@@ -313,11 +317,11 @@ async function machineLearningDemo() {
       }
       return pred;
     })
-    .setLabel("post-processor");
+    .setName("post-processor");
 
   // Build ML pipeline
   const graph = new Graph();
-  const preprocessor = new DataPreprocessor().setLabel("preprocessor");
+  const preprocessor = new DataPreprocessor().setName("preprocessor");
 
   graph.addNode(preprocessor);
   graph.addNode(featureExtractor);
@@ -500,11 +504,11 @@ async function multiProtocolDemo() {
       }
       return event;
     })
-    .setLabel("analytics");
+    .setName("analytics");
 
   // Build the API gateway graph
   const graph = new Graph();
-  const gateway = new APIGateway().setLabel("api-gateway");
+  const gateway = new APIGateway().setName("api-gateway");
 
   graph.addNode(loggingService);
   graph.addNode(authService);
@@ -553,10 +557,16 @@ async function oscillatorDemo() {
 
   const osc = new OscillatorNode();
   const multiply = createFloat32MultiplyNode();
+  const extractor = createProcessor<{ samples: Float32Array; nextPhase: number }, Float32Array>(
+    (data) => data.samples,
+    "extractor"
+  );
 
   graph.addNode(osc);
+  graph.addNode(extractor);
   graph.addNode(multiply);
-  graph.connect(osc, multiply);
+  graph.connect(osc, extractor);
+  graph.connect(extractor, multiply);
 
   const result = await graph.execute({
     frequency: 440,
@@ -596,7 +606,7 @@ async function performanceMonitoringDemo() {
     }
 
     return result;
-  }).setLabel("monitored");
+  }).setName("monitored");
 
   await monitoredNode.process({ iterations: 2000000 });
 
@@ -670,7 +680,7 @@ async function realtimeStreamDemo() {
 
   // Create multiple workers for parallel processing
   const workers = Array.from({ length: 4 }, (_, i) =>
-    new StreamProcessor().setLabel(`worker-${i}`)
+    new StreamProcessor().setName(`worker-${i}`)
   );
 
   // Load balancer distributes events across workers
@@ -751,7 +761,7 @@ async function transformationPipelineDemo() {
       }
       return filtered;
     })
-    .setLabel("privacy-filter");
+    .setName("privacy-filter");
 
   // Build pipeline
   const graph = new Graph();
@@ -788,7 +798,7 @@ async function typeAdaptiveDemo() {
     .register(String, (str) => `String: "${str.toUpperCase()}"`)
     .register(Array, (arr) => `Array[${arr.length}]: ${arr.join(", ")}`)
     .register(Date, (date) => `Date: ${date.toISOString()}`)
-    .setLabel("smart-processor");
+    .setName("smart-processor");
 
   const logger = createProcessor<string, void>(
     (msg) => console.log(msg),
