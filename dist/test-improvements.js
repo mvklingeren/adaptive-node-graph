@@ -9,7 +9,7 @@ import {
   createErrorRecoveryNode,
   createLoadBalancerNode,
   createThrottleNode
-} from "./chunks/chunk-LXIIJNKZ.js";
+} from "./chunks/chunk-PSE6PIOY.js";
 
 // src/test-improvements.ts
 console.log("=== Error Handling Demo ===");

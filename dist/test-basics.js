@@ -5,7 +5,7 @@ import {
   createFloat32MultiplyNode,
   createLoadBalancerNode,
   createProcessor
-} from "./chunks/chunk-LXIIJNKZ.js";
+} from "./chunks/chunk-PSE6PIOY.js";
 
 // src/test-basics.ts
 async function audioProcessingDemo() {
