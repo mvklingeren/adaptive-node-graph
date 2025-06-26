@@ -9,7 +9,7 @@ import {
   createErrorRecoveryNode,
   createLoadBalancerNode,
   createThrottleNode
-} from "./chunks/chunk-PSE6PIOY.js";
+} from "./chunks/chunk-AMHHLVB2.js";
 
 // src/test-improvements.ts
 console.log("=== Error Handling Demo ===");
@@ -20,7 +20,7 @@ async function errorHandlingDemo() {
       throw new Error(`Value ${input} is too high!`);
     }
     return input * 2;
-  }).setLabel("unreliable");
+  }).setName("unreliable");
   const errorLogger = createErrorLoggerNode();
   const errorRecovery = createErrorRecoveryNode(0);
   graph.addNode(unreliableNode);
@@ -51,7 +51,7 @@ async function flowControlDemo() {
     },
     { maxConcurrent: 2 }
     // Only 2 concurrent operations
-  ).setLabel("slowNode");
+  ).setName("slowNode");
   const promises = [];
   for (let i = 0; i < 5; i++) {
     promises.push(slowNode.process(i));
@@ -105,7 +105,7 @@ async function circuitBreakerDemo() {
       circuitBreakerThreshold: 3,
       circuitBreakerResetTime: 2e3
     }
-  ).setLabel("failing");
+  ).setName("failing");
   const errorLogger = createErrorLoggerNode();
   const graph = new Graph();
   graph.addNode(failingNode);
@@ -125,9 +125,9 @@ async function circuitBreakerDemo() {
 console.log("\n=== Load Balancer Demo ===");
 async function loadBalancerDemo() {
   const workers = [
-    new AdaptiveNode((n) => `Worker1: ${n}`).setLabel("worker1"),
-    new AdaptiveNode((n) => `Worker2: ${n}`).setLabel("worker2"),
-    new AdaptiveNode((n) => `Worker3: ${n}`).setLabel("worker3")
+    new AdaptiveNode((n) => `Worker1: ${n}`).setName("worker1"),
+    new AdaptiveNode((n) => `Worker2: ${n}`).setName("worker2"),
+    new AdaptiveNode((n) => `Worker3: ${n}`).setName("worker3")
   ];
   const loadBalancer = createLoadBalancerNode(workers, "round-robin");
   console.log("Round-robin load balancing:");
@@ -160,8 +160,8 @@ async function cacheDemo() {
 console.log("\n=== Sub-graph Demo ===");
 async function subGraphDemo() {
   const subGraph = new Graph();
-  const add1 = new AdaptiveNode((n) => n + 1).setLabel("add1");
-  const add2 = new AdaptiveNode((n) => n + 2).setLabel("add2");
+  const add1 = new AdaptiveNode((n) => n + 1).setName("add1");
+  const add2 = new AdaptiveNode((n) => n + 2).setName("add2");
   subGraph.addNode(add1);
   subGraph.addNode(add2);
   subGraph.connect(add1, add2);

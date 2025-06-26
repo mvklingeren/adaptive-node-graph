@@ -5,7 +5,7 @@ import {
   createFloat32MultiplyNode,
   createLoadBalancerNode,
   createProcessor
-} from "./chunks/chunk-PSE6PIOY.js";
+} from "./chunks/chunk-AMHHLVB2.js";
 
 // src/test-basics.ts
 async function audioProcessingDemo() {
@@ -16,18 +16,18 @@ async function audioProcessingDemo() {
     if (time < 0.8) return 0.7;
     return 0.7 * (1 - (time - 0.8) / 0.2);
   }, "envelope");
-  const filter = new AdaptiveNode((samples2) => {
-    const filtered2 = new Float32Array(samples2.length);
-    filtered2[0] = samples2[0];
-    for (let i = 1; i < samples2.length; i++) {
-      filtered2[i] = filtered2[i - 1] * 0.9 + samples2[i] * 0.1;
+  const filter = new AdaptiveNode((samples) => {
+    const filtered2 = new Float32Array(samples.length);
+    filtered2[0] = samples[0];
+    for (let i = 1; i < samples.length; i++) {
+      filtered2[i] = filtered2[i - 1] * 0.9 + samples[i] * 0.1;
     }
     return filtered2;
-  }).setLabel("lowpass");
+  }).setName("lowpass");
   const graph = new Graph();
   const osc = new OscillatorNode();
   const gain = createProcessor(
-    ([samples2, gainValue]) => samples2.map((s) => s * gainValue),
+    ([samples, gainValue]) => samples.map((s) => s * gainValue),
     "gain"
   );
   graph.addNode(osc);
@@ -41,12 +41,16 @@ async function audioProcessingDemo() {
     length: 44100,
     waveform: "sawtooth"
   };
-  const samples = await osc.process(params);
-  const filtered = await filter.process(samples);
+  const oscResult = await osc.process(params);
+  if (!oscResult) {
+    console.error("Audio processing failed: Oscillator did not produce output.");
+    return;
+  }
+  const filtered = await filter.process(oscResult.samples);
   const envelopeValues = await Promise.all(
     Array.from({ length: 44100 }, (_, i) => envelope.process(i / 44100))
   );
-  const output = filtered?.map((sample, i) => sample * envelopeValues[i]);
+  const output = filtered?.map((sample, i) => sample * (envelopeValues[i] ?? 0));
   console.log("Audio processing demo complete.");
 }
 async function basicMathDemo() {
@@ -193,9 +197,9 @@ async function machineLearningDemo() {
       return { ...pred, class: "uncertain" };
     }
     return pred;
-  }).setLabel("post-processor");
+  }).setName("post-processor");
   const graph = new Graph();
-  const preprocessor = new DataPreprocessor().setLabel("preprocessor");
+  const preprocessor = new DataPreprocessor().setName("preprocessor");
   graph.addNode(preprocessor);
   graph.addNode(featureExtractor);
   graph.addNode(model);
@@ -311,9 +315,9 @@ async function multiProtocolDemo() {
       console.log("Error event:", event);
     }
     return event;
-  }).setLabel("analytics");
+  }).setName("analytics");
   const graph = new Graph();
-  const gateway = new APIGateway().setLabel("api-gateway");
+  const gateway = new APIGateway().setName("api-gateway");
   graph.addNode(loggingService);
   graph.addNode(authService);
   graph.addNode(gateway);
@@ -351,9 +355,15 @@ async function oscillatorDemo() {
   const graph = new Graph();
   const osc = new OscillatorNode();
   const multiply = createFloat32MultiplyNode();
+  const extractor = createProcessor(
+    (data) => data.samples,
+    "extractor"
+  );
   graph.addNode(osc);
+  graph.addNode(extractor);
   graph.addNode(multiply);
-  graph.connect(osc, multiply);
+  graph.connect(osc, extractor);
+  graph.connect(extractor, multiply);
   const result = await graph.execute({
     frequency: 440,
     amplitude: 0.5,
@@ -379,7 +389,7 @@ async function performanceMonitoringDemo() {
       console.warn(`Slow operation: ${duration}ms`);
     }
     return result;
-  }).setLabel("monitored");
+  }).setName("monitored");
   await monitoredNode.process({ iterations: 2e6 });
   const stats = monitoredNode.getPerformanceStats();
   console.log("Performance stats:", stats);
@@ -434,7 +444,7 @@ async function realtimeStreamDemo() {
   }
   const workers = Array.from(
     { length: 4 },
-    (_, i) => new StreamProcessor().setLabel(`worker-${i}`)
+    (_, i) => new StreamProcessor().setName(`worker-${i}`)
   );
   const loadBalancer = createLoadBalancerNode(workers);
   const aggregator = createProcessor((result) => {
@@ -485,7 +495,7 @@ async function transformationPipelineDemo() {
       filtered.email = filtered.email.replace(/(.{2}).*(@.*)/, "$1***$2");
     }
     return filtered;
-  }).setLabel("privacy-filter");
+  }).setName("privacy-filter");
   const graph = new Graph();
   graph.addNode(validator);
   graph.addNode(enricher);
@@ -505,7 +515,7 @@ async function typeAdaptiveDemo() {
   console.log("\n=== Type Adaptive Demo ===");
   const smartProcessor = new AdaptiveNode(
     (input) => `Unknown type: ${typeof input}`
-  ).register(Number, (num) => `Number: ${num.toFixed(2)}`).register(String, (str) => `String: "${str.toUpperCase()}"`).register(Array, (arr) => `Array[${arr.length}]: ${arr.join(", ")}`).register(Date, (date) => `Date: ${date.toISOString()}`).setLabel("smart-processor");
+  ).register(Number, (num) => `Number: ${num.toFixed(2)}`).register(String, (str) => `String: "${str.toUpperCase()}"`).register(Array, (arr) => `Array[${arr.length}]: ${arr.join(", ")}`).register(Date, (date) => `Date: ${date.toISOString()}`).setName("smart-processor");
   const logger = createProcessor(
     (msg) => console.log(msg),
     "logger"
