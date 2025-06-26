@@ -2,6 +2,8 @@
 // Enhanced Core library for the Adaptive Node with Routing System
 // Implements: Error Handling, Type Safety, Async Flow Control, and more
 
+import pino from "pino";
+
 // ============================================================================
 // Core Types and Interfaces
 // ============================================================================
@@ -30,6 +32,7 @@ export interface NodeError {
 export interface ExecutionHooks {
   onNodeStart?: (nodeId: string) => void;
   onNodeComplete?: (nodeId: string, result: any) => void;
+  logger?: pino.Logger;
 }
 
 // ============================================================================
@@ -111,7 +114,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   }
 
   register<T extends TInput>(
-    type: new (...args: any[]) => T,
+    type: (new (...args: any[]) => T) | ((input: any) => boolean),
     processor: Processor<T, TOutput>
   ): this {
     this.processors.set(type, processor);
@@ -163,8 +166,16 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     try {
       result = await this.executeProcessor(input, graph, hooks);
 
-      if (this.outlets[0] && result !== null) {
-        await this.outlets[0].send(result, graph, hooks);
+      if (result !== null) {
+        if ((this as any).isSplitNode) {
+          const count = (this as any).dataOutletCount || 0;
+          const promises = this.outlets
+            .slice(0, count)
+            .map((outlet) => outlet.send(result, graph, hooks));
+          await Promise.all(promises);
+        } else if (this.outlets[0]) {
+          await this.outlets[0].send(result, graph, hooks);
+        }
       }
 
       return result;
@@ -190,10 +201,25 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
 
     // Type-based processor selection
     let selectedProcessor = this.defaultProcessor;
+    processorName = "default";
     for (const [type, processor] of this.processors) {
-      if (input instanceof (type as any)) {
+      let match = false;
+      if (typeof type === "function") {
+        if (
+          type.prototype &&
+          type.prototype.constructor === type &&
+          input instanceof (type as any)
+        ) {
+          match = true; // It's a class constructor
+          processorName = (type as any).name;
+        } else if (!type.prototype || !type.prototype.constructor) {
+          match = (type as (input: any) => boolean)(input); // It's a predicate function
+          processorName = `predicate:${type.toString()}`;
+        }
+      }
+
+      if (match) {
         selectedProcessor = processor;
-        processorName = type.name;
         break;
       }
     }
@@ -222,7 +248,9 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     // Check circuit breaker
     if (this.errorCount >= this.circuitBreakerThreshold) {
       this.isCircuitOpen = true;
-      console.error(
+      const logger = hooks?.logger || pino();
+      logger.error(
+        { nodeId: this.id, errorCount: this.errorCount },
         `Circuit breaker opened for node ${this.id} after ${this.errorCount} errors`
       );
     }
@@ -246,7 +274,8 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     if (this.outlets[1]?.connections.length > 0) {
       this.outlets[1].send(nodeError, graph, hooks);
     } else {
-      console.error(`Unhandled error in node ${this.id}:`, nodeError);
+      const logger = hooks?.logger || pino();
+      logger.error({ error: nodeError }, `Unhandled error in node ${this.id}`);
     }
   }
 
@@ -347,7 +376,15 @@ export class Connection<TData, TTransformed = TData> {
         nodeId: `connection-${this.source.id}-${this.target.id}`,
         timestamp: Date.now(),
       };
-      console.error(`Error in ${connError.nodeId}:`, connError.error);
+      const logger = hooks?.logger || pino();
+      logger.error(
+        {
+          sourceNode: this.source.id,
+          targetNode: this.target.id,
+          error: connError.error,
+        },
+        `Error in connection from ${this.source.id} to ${this.target.id}`
+      );
       // Forward the error to the target's error outlet
       this.target.outlets[1]?.send(connError, graph, hooks);
     }
@@ -451,46 +488,68 @@ export class Graph {
   }
 
   private updateExecutionOrder(): void {
-    // Simple topological sort
-    const visited = new Set<string>();
+    // More robust topological sort using DFS and cycle detection
     const order: AdaptiveNode[] = [];
+    const visiting = new Set<string>(); // For detecting cycles (nodes currently in recursion stack)
+    const visited = new Set<string>(); // For tracking all visited nodes
 
     const visit = (node: AdaptiveNode) => {
-      if (visited.has(node.id)) return;
-      visited.add(node.id);
+      if (visited.has(node.id)) {
+        return;
+      }
+      if (visiting.has(node.id)) {
+        // This is a developer-time warning, so console is acceptable here,
+        // but we could integrate with a logger if needed.
+        console.warn(`Cycle detected in graph involving node ${node.id}`);
+        return;
+      }
+
+      visiting.add(node.id);
 
       // Visit dependencies first
       for (const conn of this.connections) {
         if (conn.target.id === node.id && conn.sourceOutlet === 0) {
           const sourceNode = this.nodes.get(conn.source.id);
-          if (sourceNode) visit(sourceNode);
+          if (sourceNode) {
+            visit(sourceNode);
+          }
         }
       }
 
+      visiting.delete(node.id);
+      visited.add(node.id);
       order.push(node);
     };
 
     for (const node of this.nodes.values()) {
-      visit(node);
+      if (!visited.has(node.id)) {
+        visit(node);
+      }
     }
 
     this.executionOrder = order;
   }
 
   async execute<T>(
-    input: T,
+    input: T | Map<string, any>,
     startNodeId?: string,
     hooks?: ExecutionHooks
   ): Promise<any> {
     this.isStopped = false;
+
+    const processNode = (node: AdaptiveNode, nodeInput: any) => {
+      return node.process(nodeInput, this, hooks);
+    };
+
     if (startNodeId) {
       const startNode = this.nodes.get(startNodeId);
       if (!startNode) throw new Error(`Start node ${startNodeId} not found`);
-      return startNode.process(input, this, hooks);
+      const nodeInput = input instanceof Map ? input.get(startNodeId) : input;
+      return processNode(startNode, nodeInput);
     }
 
     // Find entry nodes: nodes with no incoming data connections OR nodes with an initial value.
-    const sourceNodes = this.executionOrder.filter((node) => {
+    const entryNodes = this.executionOrder.filter((node) => {
       const hasIncomingConnection = Array.from(this.connections).some(
         (conn) => conn.target.id === node.id && conn.sourceOutlet === 0
       );
@@ -498,14 +557,33 @@ export class Graph {
       return !hasIncomingConnection || hasInitialValue;
     });
 
-    const entryNodes =
-      sourceNodes.length > 0
-        ? sourceNodes
-        : this.executionOrder.length > 0
-        ? [this.executionOrder[0]]
-        : [];
+    if (entryNodes.length === 0 && this.nodes.size > 0) {
+      // If no clear entry nodes, but graph is not empty, it might be a cycle or misconfiguration.
+      // Fallback to the first node in the topological sort if it exists.
+      const firstNode = this.executionOrder[0];
+      if (firstNode) {
+        entryNodes.push(firstNode);
+      } else {
+        throw new Error(
+          "Graph execution failed: No entry nodes found and execution order is empty."
+        );
+      }
+    }
 
-    const promises = entryNodes.map((node) => node.process(input, this, hooks));
+    if (entryNodes.length > 1 && !(input instanceof Map)) {
+      throw new Error(
+        `Multiple entry nodes found (${entryNodes
+          .map((n) => n.id)
+          .join(
+            ", "
+          )}). Please specify a startNodeId or provide a Map of inputs.`
+      );
+    }
+
+    const promises = entryNodes.map((node) => {
+      const nodeInput = input instanceof Map ? input.get(node.id) : input;
+      return processNode(node, nodeInput);
+    });
     await Promise.all(promises);
 
     // Return the result from the last node in the execution order
@@ -518,34 +596,69 @@ export class Graph {
   }
 
   // Parallel execution for independent nodes
-  async executeParallel<T>(input: T): Promise<Map<string, any>> {
+  async executeParallel<T>(
+    initialInputs: Map<string, T>,
+    hooks?: ExecutionHooks
+  ): Promise<Map<string, any>> {
+    this.isStopped = false;
     const results = new Map<string, any>();
     const dependencies = this.calculateDependencies();
-    const executed = new Set<string>();
+    const inDegree = new Map<string, number>();
+    const queue: AdaptiveNode[] = [];
 
-    const canExecute = (nodeId: string): boolean => {
-      const deps = dependencies.get(nodeId) || new Set();
-      for (const dep of deps) {
-        if (!executed.has(dep)) return false;
+    // Initialize in-degrees and find initial nodes
+    for (const node of this.nodes.values()) {
+      const deps = dependencies.get(node.id) || new Set();
+      inDegree.set(node.id, deps.size);
+      if (deps.size === 0) {
+        queue.push(node);
       }
-      return true;
-    };
+    }
 
-    while (executed.size < this.nodes.size) {
-      const readyNodes = Array.from(this.nodes.values()).filter(
-        (node) => !executed.has(node.id) && canExecute(node.id)
-      );
+    while (queue.length > 0) {
+      if (this.isStopped) break;
 
-      if (readyNodes.length === 0) break;
+      const levelNodes = [...queue];
+      queue.length = 0;
 
-      const promises = readyNodes.map(async (node) => {
-        const result = await node.process(input);
+      const levelPromises = levelNodes.map(async (node) => {
+        // Find the correct input for the current node
+        // This is a simplified model; a real implementation might need to aggregate inputs
+        const input =
+          initialInputs.get(node.id) ||
+          Array.from(dependencies.get(node.id) || [])
+            .map((depId) => results.get(depId))
+            .find((res) => res !== undefined);
+
+        const result = await node.process(input, this, hooks);
         results.set(node.id, result);
-        executed.add(node.id);
-        return result;
+
+        // Decrement in-degree of downstream nodes
+        for (const conn of this.connections) {
+          if (conn.source.id === node.id) {
+            const targetId = conn.target.id;
+            const currentInDegree = (inDegree.get(targetId) || 1) - 1;
+            inDegree.set(targetId, currentInDegree);
+            if (currentInDegree === 0) {
+              const targetNode = this.nodes.get(targetId);
+              if (targetNode) queue.push(targetNode);
+            }
+          }
+        }
       });
 
-      await Promise.all(promises);
+      await Promise.all(levelPromises);
+    }
+
+    if (results.size < this.nodes.size) {
+      const logger = hooks?.logger || pino();
+      logger.warn(
+        {
+          totalNodes: this.nodes.size,
+          executedNodes: results.size,
+        },
+        "Parallel execution did not execute all nodes. A cycle may be present."
+      );
     }
 
     return results;
@@ -608,22 +721,31 @@ export const createDebounceNode = (ms: number) => {
 // Error Handling Nodes
 // ============================================================================
 
-export const createErrorLoggerNode = () =>
+export const createErrorLoggerNode = (logger?: pino.Logger) =>
   new AdaptiveNode<NodeError, NodeError>((error) => {
-    console.error(
-      `[${new Date(error.timestamp).toISOString()}] Error in node ${
-        error.nodeId
-      }:`,
-      error.error.message,
-      "\nInput:",
-      error.input
+    const log = logger || pino();
+    log.error(
+      {
+        timestamp: new Date(error.timestamp).toISOString(),
+        nodeId: error.nodeId,
+        errorMessage: error.error.message,
+        input: error.input,
+      },
+      `Error in node ${error.nodeId}`
     );
     return error;
   }).setName("errorLogger");
 
-export const createErrorRecoveryNode = <T>(defaultValue: T) =>
-  new AdaptiveNode<NodeError, T>((_error) => {
-    console.warn(`Recovering from error. Returning default value.`);
+export const createErrorRecoveryNode = <T>(
+  defaultValue: T,
+  logger?: pino.Logger
+) =>
+  new AdaptiveNode<NodeError, T>((error) => {
+    const log = logger || pino();
+    log.warn(
+      { nodeId: error.nodeId },
+      `Recovering from error in node ${error.nodeId}. Returning default value.`
+    );
     return defaultValue;
   }).setName("errorRecovery");
 
@@ -632,33 +754,32 @@ export const createErrorRecoveryNode = <T>(defaultValue: T) =>
 // ============================================================================
 
 export class TestNode<T> extends AdaptiveNode<T, T> {
-  receivedInputs: T[] = [];
-  processedOutputs: T[] = [];
-  errors: NodeError[] = [];
+  public receivedInputs: T[] = [];
+  public processedOutputs: (T | null)[] = [];
+  public errors: NodeError[] = [];
 
   constructor(processor?: Processor<T, T>) {
-    super(
-      processor ||
-        ((input) => {
-          this.receivedInputs.push(input);
-          return input;
-        })
-    );
-
-    // Override process to track outputs
-    const originalProcess = this.process.bind(this);
-    this.process = async (input: T) => {
-      const result = await originalProcess(input);
-      if (result !== null) {
-        this.processedOutputs.push(result);
-      }
-      return result;
+    const capturingProcessor: Processor<T, T> = (input) => {
+      this.receivedInputs.push(input);
+      return processor ? processor(input) : input;
     };
 
-    this.outlets[1].send = (error: NodeError) => {
-      this.errors.push(error);
-    };
+    super(capturingProcessor);
     this.setName("test");
+
+    // Attach a hook to capture outputs
+    this.onProcess = (_id, data) => {
+      // This captures the final output of the node
+      this.processedOutputs.push(data);
+    };
+
+    // Connect a dedicated error handler to capture errors
+    const errorCollector = new AdaptiveNode<NodeError, void>((error) => {
+      this.errors.push(error);
+    }).setName("testErrorCollector");
+
+    // This connection is internal to the TestNode's setup
+    new Connection(this, 1, errorCollector, 0);
   }
 
   reset(): void {
@@ -827,30 +948,35 @@ export const createMergeNode = () =>
   ).setName("merge");
 
 export const createSplitNode = (count: number = 2) => {
-  const node = new AdaptiveNode<any, any>(async (input) => {
-    // The processor sends the input to all data outlets.
-    const promises = node.outlets
-      .slice(0, count) // Only send to the data outlets
-      .map((outlet) => outlet.send(input));
-    await Promise.all(promises);
-    // The split node itself doesn't "return" a single value in the traditional sense.
-    // It forwards the input to multiple downstream paths.
-    // We return the original input for potential chaining if needed.
+  const node = new AdaptiveNode<any, any>((input) => {
+    // The processor's job is just to return the input.
+    // The modified AdaptiveNode.process will handle sending to multiple outlets.
     return input;
   }).setName("split");
 
-  // Create specified number of data outlets + 1 error outlet
-  const dataOutlets: Outlet<any>[] = Array.from({ length: count }, () => ({
-    send: async () => {}, // This will be overwritten by the connection
-    connections: [],
-  }));
+  // Create specified number of data outlets
+  const dataOutlets: Outlet<any>[] = Array.from({ length: count }, () => {
+    const outlet: Outlet<any> = {
+      send: async (data: any, graph?: Graph, hooks?: ExecutionHooks) => {
+        // This send function will be called by the node's process method.
+        // We need to iterate over the connections of THIS specific outlet.
+        const promises = outlet.connections.map((conn: any) =>
+          conn.transfer(data, graph, hooks)
+        );
+        await Promise.all(promises);
+      },
+      connections: [],
+    };
+    return outlet;
+  });
 
-  const errorOutlet: Outlet<NodeError> = {
-    send: () => {},
-    connections: [],
-  };
-
+  // The error outlet is at the end.
+  const errorOutlet: Outlet<NodeError> = node.outlets[1];
   node.outlets = [...dataOutlets, errorOutlet];
+
+  // A special property to mark this node for multi-outlet sending
+  (node as any).isSplitNode = true;
+  (node as any).dataOutletCount = count;
 
   return node;
 };
@@ -874,55 +1000,89 @@ export const createRouterNode = () =>
 // Load Balancer
 export function createLoadBalancerNode<T, U>(
   nodes: AdaptiveNode<T, U>[],
-  strategy: "round-robin" | "random" | "least-loaded" = "round-robin"
+  options: {
+    strategy?: "round-robin" | "random" | "least-loaded";
+    healthCheckInterval?: number; // in ms
+  } = {}
 ): AdaptiveNode<T, U> {
+  const { strategy = "round-robin", healthCheckInterval = 30000 } = options;
   let index = 0;
-  const nodeHealth = new Map(nodes.map((n) => [n.id, true]));
+  const nodeHealth = new Map(
+    nodes.map((n) => [n.id, { healthy: true, lastCheck: 0 }])
+  );
+
+  // Periodically try to bring back unhealthy nodes
+  const healthCheckTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [nodeId, health] of nodeHealth.entries()) {
+      if (!health.healthy && now - health.lastCheck > healthCheckInterval) {
+        // In a real app, you'd use a passed-in logger.
+        // console.log is a fallback for this standalone utility.
+        console.log(`Retrying health check for unhealthy node ${nodeId}`);
+        health.healthy = true; // Mark as healthy to allow a new request
+        health.lastCheck = now;
+      }
+    }
+  }, healthCheckInterval);
 
   const loadBalancer = new AdaptiveNode<T, U>(async (input) => {
-    let nodesToTry = nodes.filter((n) => nodeHealth.get(n.id));
+    let nodesToTry = nodes.filter((n) => nodeHealth.get(n.id)?.healthy);
     if (nodesToTry.length === 0) {
-      throw new Error("No healthy nodes available");
+      throw new Error("No healthy nodes available in load balancer.");
     }
 
-    while (nodesToTry.length > 0) {
-      let selectedNode: AdaptiveNode<T, U>;
-      let nodeIndexInTryList: number;
+    let selectedNode: AdaptiveNode<T, U> | undefined;
+    let nodeIndexInTryList: number = -1;
 
-      switch (strategy) {
-        case "random":
-          nodeIndexInTryList = Math.floor(Math.random() * nodesToTry.length);
-          selectedNode = nodesToTry[nodeIndexInTryList];
-          break;
-        case "least-loaded":
-          // Simplified: a real implementation would need performance metrics.
-          nodeIndexInTryList = 0;
-          selectedNode = nodesToTry[0];
-          break;
-        default: // round-robin
-          nodeIndexInTryList = index % nodesToTry.length;
-          selectedNode = nodesToTry[nodeIndexInTryList];
-          index++;
-          break;
-      }
-
-      try {
-        const result = await selectedNode.process(input);
-        if (result === null) {
-          throw new Error(`Node ${selectedNode.id} returned null`);
-        }
-        return result;
-      } catch (error) {
-        console.warn(
-          `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
-          error
-        );
-        nodeHealth.set(selectedNode.id, false);
-        nodesToTry.splice(nodeIndexInTryList, 1);
-      }
+    // Node selection logic
+    switch (strategy) {
+      case "random":
+        nodeIndexInTryList = Math.floor(Math.random() * nodesToTry.length);
+        selectedNode = nodesToTry[nodeIndexInTryList];
+        break;
+      case "least-loaded":
+        // This is still simplified. A real implementation would need to track active requests.
+        // For now, it just picks the first available healthy node.
+        selectedNode = nodesToTry[0];
+        nodeIndexInTryList = 0;
+        break;
+      default: // round-robin
+        index = index % nodesToTry.length;
+        selectedNode = nodesToTry[index];
+        nodeIndexInTryList = index;
+        index++;
+        break;
     }
 
-    throw new Error("All available nodes failed to process the input.");
+    if (!selectedNode) {
+      throw new Error("Load balancer could not select a node.");
+    }
+
+    try {
+      const result = await selectedNode.process(input);
+      if (result === null) {
+        // Consider null result as a failure for load balancing purposes
+        throw new Error(`Node ${selectedNode.id} returned null`);
+      }
+      return result;
+    } catch (error) {
+      // console.warn is fine here for now as it's a utility function.
+      // A more advanced implementation would pass a logger through hooks.
+      console.warn(
+        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
+        error
+      );
+      const health = nodeHealth.get(selectedNode.id);
+      if (health) {
+        health.healthy = false;
+        health.lastCheck = Date.now();
+      }
+      // Instead of recursively calling or looping, we throw, letting a higher-level retry mechanism handle it.
+      // This simplifies the logic and prevents complex state management within a single process call.
+      throw new Error(
+        `Node ${selectedNode.id} failed. All other nodes were skipped.`
+      );
+    }
   });
 
   return loadBalancer.setName(`loadBalance(${strategy})`);
@@ -940,38 +1100,46 @@ export function createParallelNode<T, U>(
 // Cache Node
 export function createCacheNode<T, U>(
   processor: Processor<T, U>,
-  ttl: number = 1000,
-  maxSize: number = 100
+  options: {
+    ttl?: number;
+    maxSize?: number;
+    getKey?: (input: T) => string;
+  } = {}
 ): AdaptiveNode<T, U> {
+  const { ttl = 1000, maxSize = 100, getKey = JSON.stringify } = options;
   const cache = new Map<string, { value: U; timestamp: number }>();
 
+  // LRU cache eviction
+  const evictOldest = () => {
+    let oldestKey: string | undefined;
+    let oldestTimestamp = Infinity;
+    for (const [key, value] of cache.entries()) {
+      if (value.timestamp < oldestTimestamp) {
+        oldestTimestamp = value.timestamp;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      cache.delete(oldestKey);
+    }
+  };
+
   return new AdaptiveNode<T, U>(async (input: T) => {
-    const key = JSON.stringify(input);
+    const key = getKey(input);
     const cached = cache.get(key);
 
-    if (cached && Date.now() - cached.timestamp < ttl) {
+    const now = Date.now();
+    if (cached && now - cached.timestamp < ttl) {
+      // Refresh timestamp for LRU
+      cached.timestamp = now;
       return cached.value;
     }
 
     const result = await processor(input);
-    cache.set(key, { value: result, timestamp: Date.now() });
-
-    if (cache.size > maxSize) {
-      const firstKey = cache.keys().next().value;
-      if (firstKey !== undefined) {
-        cache.delete(firstKey);
-      }
+    if (cache.size >= maxSize) {
+      evictOldest();
     }
-
-    // Clean expired entries periodically
-    if (Math.random() < 0.1) {
-      // 10% chance to clean
-      for (const [k, v] of cache.entries()) {
-        if (Date.now() - v.timestamp > ttl) {
-          cache.delete(k);
-        }
-      }
-    }
+    cache.set(key, { value: result, timestamp: now });
 
     return result;
   }).setName(`cache(${ttl}ms)`);
