@@ -18,7 +18,7 @@ export interface Inlet<T = any> {
 }
 
 export interface Outlet<T = any> {
-  send(data: T): void;
+  send(data: T, graph?: Graph, hooks?: ExecutionHooks): void;
   connections: Connection<T, any>[];
 }
 
@@ -64,7 +64,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   private isCircuitOpen = false;
 
   // Store last result for sub-graphs
-  private lastResult: TOutput | null = null;
+  protected lastResult: TOutput | null = null;
   public isEmitting = true;
   public onProcess: ((id: string, data: any) => void) | null = null;
   public code: string | null = null;
@@ -111,25 +111,31 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       },
     ];
 
+    const dataOutletConnections: Connection<TOutput, any>[] = [];
+    const errorOutletConnections: Connection<NodeError, any>[] = [];
+
     this.visual.outlets = [
       // Data outlet
       {
         send: async (data: TOutput, graph?: Graph, hooks?: ExecutionHooks) => {
-          const promises = this.visual.outlets[0].connections.map((conn) =>
-            conn.transfer(data, graph, hooks)
-          );
+          console.log(`Node ${this.id} data outlet send called with hooks:`, hooks ? 'hooks present' : 'no hooks');
+          console.log(`Node ${this.id} has ${dataOutletConnections.length} connections`);
+          const promises = dataOutletConnections.map((conn) => {
+            console.log(`Node ${this.id} sending data to connection ${conn.source.id} -> ${conn.target.id}`);
+            return conn.transfer(data, graph, hooks);
+          });
           await Promise.all(promises);
         },
-        connections: [],
+        connections: dataOutletConnections,
       },
       // Error outlet
       {
-        send: (error: NodeError) => {
-          this.visual.outlets[1].connections.forEach((conn) => {
-            conn.transfer(error, undefined, undefined);
+        send: (error: NodeError, graph?: Graph, hooks?: ExecutionHooks) => {
+          errorOutletConnections.forEach((conn) => {
+            conn.transfer(error, graph, hooks);
           });
         },
-        connections: [],
+        connections: errorOutletConnections,
       },
     ];
   }
@@ -151,7 +157,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       return null;
     }
 
-    hooks?.onNodeStart?.(this.id);
+    console.log(`Node ${this.id} process called with hooks:`, hooks ? 'hooks present' : 'no hooks');
+    
+    // Make a local copy of hooks to ensure it's not lost in async operations
+    const localHooks = hooks;
+    
+    localHooks?.onNodeStart?.(this.id);
 
     if (this.isEmitting && this.onProcess) {
       this.onProcess(this.id, input);
@@ -163,12 +174,12 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         const result = eval(this.code);
         return result;
       } catch (error) {
-        this.handleError(error as Error, input);
+        this.handleError(error as Error, input, graph, hooks);
         return null;
       }
     }
 
-    if (this.initialValue !== null) {
+    if (input === null && this.initialValue !== null) {
       input = this.initialValue;
     }
 
@@ -179,7 +190,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         this.isCircuitOpen = false;
         this.errorCount = 0;
       } else {
-        this.sendError(new Error("Circuit breaker is open"), input);
+        this.sendError(new Error("Circuit breaker is open"), input, graph, hooks);
         return null;
       }
     }
@@ -190,47 +201,61 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     }
 
     this.processing++;
-    const start = performance.now();
-    let processorName = "default";
-
+    
+    let result: TOutput | null = null;
     try {
-      // Type-based processor selection
-      let selectedProcessor = this.defaultProcessor;
-      for (const [type, processor] of this.processors) {
-        if (input instanceof type) {
-          selectedProcessor = processor;
-          processorName = type.name;
-          break;
-        }
-      }
-
-      const result = await selectedProcessor(input);
-      this.recordPerformance(processorName, performance.now() - start);
-
-      // Store last result
-      this.lastResult = result;
+      result = await this.executeProcessor(input, graph, hooks);
 
       // Send to data outlet
-      if (this.visual.outlets[0]) {
-        await this.visual.outlets[0].send(result);
+      if (this.visual.outlets[0] && result !== null) {
+        await this.visual.outlets[0].send(result, graph, hooks);
       }
-
-      // Reset error count on success
-      this.errorCount = 0;
 
       return result;
     } catch (error) {
-      this.handleError(error as Error, input);
+      this.handleError(error as Error, input, graph, hooks);
       return null;
     } finally {
       this.processing--;
       const nextInQueue = this.queue.shift();
       if (nextInQueue) nextInQueue();
-      hooks?.onNodeComplete?.(this.id, this.lastResult);
+      
+      // Use the local copy of hooks to ensure it's not lost
+      localHooks?.onNodeComplete?.(this.id, result);
     }
   }
 
-  private handleError(error: Error, input: TInput): void {
+  protected async executeProcessor(
+    input: TInput,
+    graph?: Graph,
+    hooks?: ExecutionHooks
+  ): Promise<TOutput> {
+    const start = performance.now();
+    let processorName = "default";
+
+    // Type-based processor selection
+    let selectedProcessor = this.defaultProcessor;
+    for (const [type, processor] of this.processors) {
+      if (input instanceof type) {
+        selectedProcessor = processor;
+        processorName = type.name;
+        break;
+      }
+    }
+
+    const result = await selectedProcessor(input);
+    this.recordPerformance(processorName, performance.now() - start);
+
+    // Store last result
+    this.lastResult = result;
+
+    // Reset error count on success
+    this.errorCount = 0;
+
+    return result;
+  }
+
+  protected handleError(error: Error, input: TInput, graph?: Graph, hooks?: ExecutionHooks): void {
     this.errorCount++;
     this.lastErrorTime = Date.now();
 
@@ -242,10 +267,10 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       );
     }
 
-    this.sendError(error, input);
+    this.sendError(error, input, graph, hooks);
   }
 
-  private sendError(error: Error, input: TInput): void {
+  protected sendError(error: Error, input: TInput, graph?: Graph, hooks?: ExecutionHooks): void {
     const nodeError: NodeError = {
       error,
       input,
@@ -258,14 +283,14 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       this.visual.outlets[1] &&
       this.visual.outlets[1].connections.length > 0
     ) {
-      this.visual.outlets[1].send(nodeError);
+      this.visual.outlets[1].send(nodeError, graph, hooks);
     } else {
       // Log if no error handler connected
       console.error(`Unhandled error in node ${this.id}:`, error);
     }
   }
 
-  private recordPerformance(processorName: string, duration: number): void {
+  protected recordPerformance(processorName: string, duration: number): void {
     if (!this.performanceStats.has(processorName)) {
       this.performanceStats.set(processorName, []);
     }
@@ -370,6 +395,7 @@ export class Connection<TData, TTransformed = TData> {
     hooks?: ExecutionHooks
   ): Promise<void> {
     try {
+      console.log(`Connection ${this.source.id} -> ${this.target.id} transfer called with hooks:`, hooks ? 'hooks present' : 'no hooks');
       const transformed = this.transformer
         ? await this.transformer(data)
         : (data as unknown as TTransformed);
@@ -519,19 +545,23 @@ export class Graph {
     hooks?: ExecutionHooks
   ): Promise<any> {
     this.isStopped = false;
+    console.log(`Graph.execute called with hooks:`, hooks ? 'hooks present' : 'no hooks');
+    
     if (startNodeId) {
       const startNode = this.nodes.get(startNodeId);
       if (!startNode) throw new Error(`Node ${startNodeId} not found`);
+      console.log(`Executing start node ${startNodeId}`);
       return startNode.process(input, this, hooks);
     }
 
-    // Find source nodes (nodes with no incoming data connections)
-    const sourceNodes = this.executionOrder.filter(
-      (node) =>
-        !Array.from(this.connections).some(
-          (conn) => conn.target.id === node.id && conn.sourceOutlet === 0
-        )
-    );
+    // Find entry nodes: nodes with no incoming data connections OR nodes with an initial value.
+    const sourceNodes = this.executionOrder.filter((node) => {
+      const hasIncomingConnection = Array.from(this.connections).some(
+        (conn) => conn.target.id === node.id && conn.sourceOutlet === 0
+      );
+      const hasInitialValue = node.initialValue !== null;
+      return !hasIncomingConnection || hasInitialValue;
+    });
 
     const entryNodes =
       sourceNodes.length > 0
@@ -540,8 +570,13 @@ export class Graph {
         ? [this.executionOrder[0]]
         : [];
 
+    console.log(`Found ${entryNodes.length} entry nodes:`, entryNodes.map(node => node.id));
+    
     // Execute all entry nodes with the initial input
-    const promises = entryNodes.map((node) => node.process(input, this, hooks));
+    const promises = entryNodes.map((node) => {
+      console.log(`Executing entry node ${node.id}`);
+      return node.process(input, this, hooks);
+    });
     await Promise.all(promises);
 
     // Return the result from the last node in the execution order
@@ -814,22 +849,36 @@ export class SubGraphNode<TInput = any, TOutput = any> extends AdaptiveNode<
     private inputNodeId?: string,
     private outputNodeId?: string
   ) {
-    super(async (input: TInput) => {
-      // Execute the sub-graph
-      const result = await this.subGraph.execute(input, this.inputNodeId);
-
-      // If output node specified, get its result
-      if (this.outputNodeId) {
-        const outputNode = this.subGraph.getNode(this.outputNodeId);
-        if (outputNode) {
-          return outputNode.getLastResult() || result;
-        }
-      }
-
-      return result;
-    });
-
+    // We pass a dummy processor to the super constructor, as we're overriding executeProcessor.
+    super(async () => null as unknown as TOutput);
     this.setLabel("subgraph");
+  }
+
+  protected async executeProcessor(
+    input: TInput,
+    graph?: Graph,
+    hooks?: ExecutionHooks
+  ): Promise<TOutput> {
+    // Execute the sub-graph, passing the hooks down
+    const result = await this.subGraph.execute(input, this.inputNodeId, hooks);
+
+    let finalResult: TOutput;
+
+    // If output node specified, get its result
+    if (this.outputNodeId) {
+      const outputNode = this.subGraph.getNode(this.outputNodeId);
+      if (outputNode) {
+        finalResult = outputNode.getLastResult() || result;
+      } else {
+        finalResult = result;
+      }
+    } else {
+      finalResult = result;
+    }
+    
+    // Store the final result in the SubGraphNode itself
+    this.lastResult = finalResult;
+    return finalResult;
   }
 
   getSubGraph(): Graph {
@@ -948,53 +997,58 @@ export function createLoadBalancerNode<T, U>(
   const nodeHealth = new Map(nodes.map((n) => [n.id, true]));
 
   const loadBalancer = new AdaptiveNode<T, U>(async (input) => {
-    const healthyNodes = nodes.filter((n) => nodeHealth.get(n.id));
-    if (healthyNodes.length === 0) {
+    // Get a list of currently healthy nodes for this attempt
+    let nodesToTry = nodes.filter((n) => nodeHealth.get(n.id));
+    if (nodesToTry.length === 0) {
       throw new Error("No healthy nodes available");
     }
 
-    let selectedNode: AdaptiveNode<T, U>;
+    while (nodesToTry.length > 0) {
+      let selectedNode: AdaptiveNode<T, U>;
+      let nodeIndexInTryList: number;
 
-    switch (strategy) {
-      case "random":
-        selectedNode =
-          healthyNodes[Math.floor(Math.random() * healthyNodes.length)];
-        break;
-      case "least-loaded":
-        // This would need access to node processing count
-        selectedNode = healthyNodes[0]; // Simplified
-        break;
-      default: // round-robin
-        selectedNode = healthyNodes[index % healthyNodes.length];
-        index++;
-    }
-
-    try {
-      const result = await selectedNode.process(input);
-      if (result === null) {
-        throw new Error("Node returned null");
+      switch (strategy) {
+        case "random":
+          nodeIndexInTryList = Math.floor(Math.random() * nodesToTry.length);
+          selectedNode = nodesToTry[nodeIndexInTryList];
+          break;
+        case "least-loaded":
+          // This is a simplified version. A real implementation would need metrics.
+          nodeIndexInTryList = 0;
+          selectedNode = nodesToTry[nodeIndexInTryList];
+          break;
+        default: // round-robin
+          nodeIndexInTryList = index % nodesToTry.length;
+          selectedNode = nodesToTry[nodeIndexInTryList];
+          index++;
+          break;
       }
-      return result;
-    } catch (error) {
-      nodeHealth.set(selectedNode.id, false);
-      // Retry with another node
-      if (healthyNodes.length > 1) {
-        // Recursive retry - remove the failed node from consideration
-        const retryNodes = nodes.filter(
-          (n) => n.id !== selectedNode.id && nodeHealth.get(n.id)
-        );
-        if (retryNodes.length > 0) {
-          const retryBalancer = createLoadBalancerNode(retryNodes, strategy);
-          const retryResult = await retryBalancer.process(input);
-          if (retryResult === null) {
-            throw new Error("Retry returned null");
-          }
-          return retryResult;
+
+      try {
+        const result = await selectedNode.process(input);
+        // A null result might be a valid outcome for some nodes,
+        // but the original implementation treated it as an error.
+        if (result === null) {
+          throw new Error(`Node ${selectedNode.id} returned null`);
         }
+        return result; // Success, exit the loop
+      } catch (error) {
+        console.warn(
+          `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
+          error
+        );
+        nodeHealth.set(selectedNode.id, false);
+        // Remove the failed node from our list for this attempt and retry
+        nodesToTry.splice(nodeIndexInTryList, 1);
       }
-      throw error;
     }
+
+    // If we exit the loop, all healthy nodes failed for this input
+    throw new Error("All available nodes failed to process the input.");
   });
+
+  // Expose worker nodes for visualization
+  (loadBalancer as any).workerNodes = nodes;
 
   return loadBalancer.setLabel(`loadBalance(${strategy})`);
 }
@@ -1144,11 +1198,11 @@ export function chain<A, B, C>(
   return new AdaptiveNode<A, C>(async (input: A) => {
     const intermediate = await first.process(input);
     if (intermediate === null) {
-      throw new Error("Intermediate result was null");
+      throw new Error('Intermediate result was null');
     }
     const result = await second.process(intermediate);
     if (result === null) {
-      throw new Error("Second node result was null");
+      throw new Error('Second node result was null');
     }
     return result;
   }).setLabel(`${first.visual.label} → ${second.visual.label}`);
