@@ -114,10 +114,10 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   }
 
   register<T extends TInput>(
-    type: (new (...args: any[]) => T) | ((input: any) => boolean),
+    predicate: (input: any) => input is T,
     processor: Processor<T, TOutput>
   ): this {
-    this.processors.set(type, processor);
+    this.processors.set(predicate, processor);
     return this;
   }
 
@@ -167,13 +167,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
       result = await this.executeProcessor(input, graph, hooks);
 
       if (result !== null) {
-        if ((this as any).isSplitNode) {
-          const count = (this as any).dataOutletCount || 0;
-          const promises = this.outlets
-            .slice(0, count)
-            .map((outlet) => outlet.send(result, graph, hooks));
-          await Promise.all(promises);
-        } else if (this.outlets[0]) {
+        if (this.outlets[0]) {
           await this.outlets[0].send(result, graph, hooks);
         }
       }
@@ -194,7 +188,7 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
   protected async executeProcessor(
     input: TInput,
     _graph?: Graph,
-    _hooks?: ExecutionHooks
+    hooks?: ExecutionHooks
   ): Promise<TOutput> {
     const start = performance.now();
     let processorName = "default";
@@ -202,24 +196,10 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     // Type-based processor selection
     let selectedProcessor = this.defaultProcessor;
     processorName = "default";
-    for (const [type, processor] of this.processors) {
-      let match = false;
-      if (typeof type === "function") {
-        if (
-          type.prototype &&
-          type.prototype.constructor === type &&
-          input instanceof (type as any)
-        ) {
-          match = true; // It's a class constructor
-          processorName = (type as any).name;
-        } else if (!type.prototype || !type.prototype.constructor) {
-          match = (type as (input: any) => boolean)(input); // It's a predicate function
-          processorName = `predicate:${type.toString()}`;
-        }
-      }
-
-      if (match) {
+    for (const [predicate, processor] of this.processors) {
+      if ((predicate as (input: any) => boolean)(input)) {
         selectedProcessor = processor;
+        processorName = `predicate:${predicate.toString()}`;
         break;
       }
     }
@@ -417,11 +397,12 @@ export class Graph {
   public nodes = new Map<string, AdaptiveNode>();
   public connections = new Set<Connection<any, any>>();
   private executionOrder: AdaptiveNode[] = [];
+  private _isDirty = true;
   public isStopped = false;
 
   addNode(node: AdaptiveNode): this {
     this.nodes.set(node.id, node);
-    this.updateExecutionOrder();
+    this._isDirty = true;
     return this;
   }
 
@@ -441,7 +422,7 @@ export class Graph {
     }
 
     this.nodes.delete(nodeId);
-    this.updateExecutionOrder();
+    this._isDirty = true;
     return this;
   }
 
@@ -465,7 +446,7 @@ export class Graph {
       transformer
     );
     this.connections.add(connection);
-    this.updateExecutionOrder();
+    this._isDirty = true;
     return connection;
   }
 
@@ -482,23 +463,26 @@ export class Graph {
       undefined
     );
     this.connections.add(connection);
-    this.updateExecutionOrder();
+    this._isDirty = true;
     return connection;
   }
 
   disconnect(connection: Connection<any, any>): this {
     connection.disconnect();
     this.connections.delete(connection);
-    this.updateExecutionOrder();
+    this._isDirty = true;
     return this;
   }
 
-  public getExecutionOrder(): AdaptiveNode[] {
-    this.updateExecutionOrder();
+  public getExecutionOrder(hooks?: ExecutionHooks): AdaptiveNode[] {
+    if (this._isDirty) {
+      this.updateExecutionOrder(hooks);
+    }
     return this.executionOrder;
   }
 
-  private updateExecutionOrder(): void {
+  private updateExecutionOrder(hooks?: ExecutionHooks): void {
+    const logger = hooks?.logger || pino();
     // More robust topological sort using DFS and cycle detection
     const order: AdaptiveNode[] = [];
     const visiting = new Set<string>(); // For detecting cycles (nodes currently in recursion stack)
@@ -509,9 +493,7 @@ export class Graph {
         return;
       }
       if (visiting.has(node.id)) {
-        // This is a developer-time warning, so console is acceptable here,
-        // but we could integrate with a logger if needed.
-        console.warn(`Cycle detected in graph involving node ${node.id}`);
+        logger.warn({ nodeId: node.id }, `Cycle detected in graph involving node ${node.id}`);
         return;
       }
 
@@ -539,6 +521,7 @@ export class Graph {
     }
 
     this.executionOrder = order;
+    this._isDirty = false;
   }
 
   async execute<T>(
@@ -547,6 +530,7 @@ export class Graph {
     hooks?: ExecutionHooks
   ): Promise<any> {
     this.isStopped = false;
+    const executionOrder = this.getExecutionOrder(hooks);
 
     const processNode = (node: AdaptiveNode, nodeInput: any) => {
       return node.process(nodeInput, this, hooks);
@@ -560,7 +544,7 @@ export class Graph {
     }
 
     // Find entry nodes: nodes with no incoming data connections OR nodes with an initial value.
-    const entryNodes = this.executionOrder.filter((node) => {
+    const entryNodes = executionOrder.filter((node) => {
       const hasIncomingConnection = Array.from(this.connections).some(
         (conn) => conn.target.id === node.id && conn.sourceOutlet === 0
       );
@@ -569,9 +553,11 @@ export class Graph {
     });
 
     if (entryNodes.length === 0 && this.nodes.size > 0) {
-      // If no clear entry nodes, but graph is not empty, it might be a cycle or misconfiguration.
-      // Fallback to the first node in the topological sort if it exists.
-      const firstNode = this.executionOrder[0];
+      // If no clear entry nodes are found (e.g., in a graph with cycles),
+      // the behavior is to fall back to the first node in the topological sort.
+      // Note: This may not be the desired entry point for all cyclic graphs.
+      // For predictable execution in such cases, explicitly provide a `startNodeId`.
+      const firstNode = executionOrder[0];
       if (firstNode) {
         entryNodes.push(firstNode);
       } else {
@@ -598,7 +584,7 @@ export class Graph {
     await Promise.all(promises);
 
     // Return the result from the last node in the execution order
-    const lastNode = this.executionOrder[this.executionOrder.length - 1];
+    const lastNode = executionOrder[executionOrder.length - 1];
     return lastNode?.getLastResult();
   }
 
@@ -975,38 +961,53 @@ export const createMergeNode = () =>
     inputs.filter((x) => x !== null && x !== undefined)
   ).setName("merge");
 
+export class SplitNode<T = any> extends AdaptiveNode<T, T> {
+  private readonly dataOutletCount: number;
+
+  constructor(count: number = 2) {
+    super((input) => input); // The processor just passes the input through.
+    this.setName("split");
+    this.dataOutletCount = count;
+
+    // Create specified number of data outlets
+    const dataOutlets: Outlet<T>[] = Array.from({ length: count }, () => {
+      const outlet: Outlet<T> = {
+        send: async (data: T, graph?: Graph, hooks?: ExecutionHooks) => {
+          const promises = outlet.connections.map((conn) =>
+            conn.transfer(data, graph, hooks)
+          );
+          await Promise.all(promises);
+        },
+        connections: [],
+      };
+      return outlet;
+    });
+
+    // The error outlet is at the end.
+    const errorOutlet: Outlet<NodeError> = this.outlets[1];
+    this.outlets = [...dataOutlets, errorOutlet];
+  }
+
+  async process(
+    input: T,
+    graph?: Graph,
+    hooks?: ExecutionHooks
+  ): Promise<T | null> {
+    const result = await super.process(input, graph, hooks);
+
+    if (result !== null) {
+      const promises = this.outlets
+        .slice(0, this.dataOutletCount)
+        .map((outlet) => outlet.send(result, graph, hooks));
+      await Promise.all(promises);
+    }
+
+    return result;
+  }
+}
+
 export const createSplitNode = (count: number = 2) => {
-  const node = new AdaptiveNode<any, any>((input) => {
-    // The processor's job is just to return the input.
-    // The modified AdaptiveNode.process will handle sending to multiple outlets.
-    return input;
-  }).setName("split");
-
-  // Create specified number of data outlets
-  const dataOutlets: Outlet<any>[] = Array.from({ length: count }, () => {
-    const outlet: Outlet<any> = {
-      send: async (data: any, graph?: Graph, hooks?: ExecutionHooks) => {
-        // This send function will be called by the node's process method.
-        // We need to iterate over the connections of THIS specific outlet.
-        const promises = outlet.connections.map((conn: any) =>
-          conn.transfer(data, graph, hooks)
-        );
-        await Promise.all(promises);
-      },
-      connections: [],
-    };
-    return outlet;
-  });
-
-  // The error outlet is at the end.
-  const errorOutlet: Outlet<NodeError> = node.outlets[1];
-  node.outlets = [...dataOutlets, errorOutlet];
-
-  // A special property to mark this node for multi-outlet sending
-  (node as any).isSplitNode = true;
-  (node as any).dataOutletCount = count;
-
-  return node;
+  return new SplitNode(count);
 };
 
 // Smart Routing
@@ -1015,14 +1016,26 @@ export const createRouterNode = () =>
     route: "default",
     data: input,
   }))
-    .register(AudioBuffer, (audio) => ({ route: "audio", data: audio }))
-    .register(ArrayBuffer, (buffer) => ({ route: "binary", data: buffer }))
-    .register(Array, (array) => ({ route: "array", data: array }))
-    .register(Object, (obj) => {
-      if ("sampleRate" in obj) return { route: "audio", data: obj };
-      if ("buffer" in obj) return { route: "binary", data: obj };
-      return { route: "object", data: obj };
-    })
+    .register(
+      (input): input is AudioBuffer => input instanceof AudioBuffer,
+      (audio) => ({ route: "audio", data: audio })
+    )
+    .register(
+      (input): input is ArrayBuffer => input instanceof ArrayBuffer,
+      (buffer) => ({ route: "binary", data: buffer })
+    )
+    .register(
+      (input): input is any[] => Array.isArray(input),
+      (array) => ({ route: "array", data: array })
+    )
+    .register(
+      (input): input is object => typeof input === "object" && input !== null,
+      (obj) => {
+        if ("sampleRate" in obj) return { route: "audio", data: obj };
+        if ("buffer" in obj) return { route: "binary", data: obj };
+        return { route: "object", data: obj };
+      }
+    )
     .setName("router");
 
 // Load Balancer
@@ -1033,8 +1046,9 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
 
   constructor(
     private nodes: AdaptiveNode<T, U>[],
-    private strategy: "round-robin" | "random" | "least-loaded" = "round-robin",
-    healthCheckInterval: number = 30000
+    private strategy: "round-robin" | "random" = "round-robin",
+    healthCheckInterval: number = 30000,
+    private logger: pino.Logger = pino()
   ) {
     super(async () => null as U); // The actual logic is in executeProcessor
     this.nodeHealth = new Map(
@@ -1045,7 +1059,9 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
       const now = Date.now();
       for (const [nodeId, health] of this.nodeHealth.entries()) {
         if (!health.healthy && now - health.lastCheck > healthCheckInterval) {
-          console.log(`Retrying health check for unhealthy node ${nodeId}`);
+          this.logger.info(
+            `Retrying health check for unhealthy node ${nodeId}`
+          );
           health.healthy = true;
           health.lastCheck = now;
         }
@@ -1053,7 +1069,12 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
     }, healthCheckInterval);
   }
 
-  protected async executeProcessor(input: T): Promise<U> {
+  protected async executeProcessor(
+    input: T,
+    _graph?: Graph,
+    hooks?: ExecutionHooks
+  ): Promise<U> {
+    const logger = hooks?.logger || this.logger;
     const nodesToTry = this.nodes.filter(
       (n) => this.nodeHealth.get(n.id)?.healthy
     );
@@ -1068,9 +1089,6 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
         selectedNode =
           nodesToTry[Math.floor(Math.random() * nodesToTry.length)];
         break;
-      case "least-loaded":
-        selectedNode = nodesToTry[0];
-        break;
       default: // round-robin
         this.index = this.index % nodesToTry.length;
         selectedNode = nodesToTry[this.index];
@@ -1083,15 +1101,15 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
     }
 
     try {
-      const result = await selectedNode.process(input);
+      const result = await selectedNode.process(input, _graph, hooks);
       if (result === null) {
         throw new Error(`Node ${selectedNode.id} returned null`);
       }
       return result;
     } catch (error) {
-      console.warn(
-        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
-        error
+      logger.warn(
+        { err: error, nodeId: selectedNode.id },
+        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`
       );
       const health = this.nodeHealth.get(selectedNode.id);
       if (health) {
@@ -1113,7 +1131,7 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
 export function createLoadBalancerNode<T, U>(
   nodes: AdaptiveNode<T, U>[],
   options: {
-    strategy?: "round-robin" | "random" | "least-loaded";
+    strategy?: "round-robin" | "random";
     healthCheckInterval?: number; // in ms
   } = {}
 ): AdaptiveNode<T, U> {

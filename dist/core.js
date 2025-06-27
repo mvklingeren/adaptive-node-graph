@@ -3,6 +3,7 @@ import {
   Connection,
   Graph,
   OscillatorNode,
+  SplitNode,
   SubGraphNode,
   TestNode,
   createAddNode,
@@ -28,12 +29,13 @@ import {
   createSubtractNode,
   createThrottleNode,
   testGraph
-} from "./chunks/chunk-OXXTZDDQ.js";
+} from "./chunks/chunk-Z4NUVEEI.js";
 export {
   AdaptiveNode,
   Connection,
   Graph,
   OscillatorNode,
+  SplitNode,
   SubGraphNode,
   TestNode,
   createAddNode,
