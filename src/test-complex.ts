@@ -155,18 +155,23 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   graph.connect(finalProcessor, finalOutput);
 
   // --- Execution and Assertions ---
-  // First run
+  // Run 1: Should go to worker1
   await graph.execute(10, input.id);
-
-  // Assertions
   pathA_Output.assertReceived([25]); // (10 * 2) + 5
-  pathB_Output.assertReceived(["w1:15", "w2:15"]); // subGraphNode passes 15, LB distributes
-  assert.equal(errorOutput.receivedInputs.length, 1, "Worker error not caught");
+  pathB_Output.assertReceived(["w1:15"]); // subGraphNode passes 15, LB sends to w1
   assert.equal(pathA_ComputeCount, 1, "Path A should compute once");
-  
-  // Second run (tests cache)
+
+  // Run 2: Should go to worker2 (and test cache)
+  pathB_Output.reset();
   await graph.execute(10, input.id);
+  pathB_Output.assertReceived(["w2:15"]); // subGraphNode passes 15, LB sends to w2
   assert.equal(pathA_ComputeCount, 1, "Path A cache was not used");
+
+  // Run 3: Should go to worker3 and fail
+  pathB_Output.reset();
+  await graph.execute(10, input.id);
+  pathB_Output.assertReceived([]); // No output on failure
+  assert.equal(errorOutput.receivedInputs.length, 1, "Worker error not caught");
 
   // Third run (with feedback loop)
   feedbackGate.setInitialValue([true, 5]); // Open the gate with a new value

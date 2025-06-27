@@ -30,7 +30,7 @@ import {
   createSubtractNode,
   createThrottleNode,
   testGraph
-} from "./chunks/chunk-X2WD6DAB.js";
+} from "./chunks/chunk-HWGFHZAP.js";
 export {
   AdaptiveNode,
   Connection,

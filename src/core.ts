@@ -1044,13 +1044,15 @@ export class SplitNode<T = any> extends AdaptiveNode<T, T> {
 
     hooks?.onNodeStart?.(this.id);
 
+    if (input === null && this.initialValue !== null) {
+      input = this.initialValue;
+    }
+
     let result: T | null = null;
     try {
-      // The processor for SplitNode is just an identity function, so result is input.
       result = await this.executeProcessor(input, graph, hooks);
 
       if (result !== null) {
-        // This is the core logic: send the result to all data outlets.
         const promises = this.outlets
           .slice(0, this.dataOutletCount)
           .map((outlet) => outlet.send(result, graph, hooks));
@@ -1063,8 +1065,6 @@ export class SplitNode<T = any> extends AdaptiveNode<T, T> {
       hooks?.onNodeComplete?.(this.id, result);
     }
 
-    // The return value of process() for a SplitNode is not typically used directly,
-    // as its main job is to fan out. Returning the result is consistent.
     return result;
   }
 }
@@ -1136,52 +1136,62 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
     input: T,
     graph?: Graph,
     hooks?: ExecutionHooks
-  ): Promise<null> {
+  ): Promise<U | null> {
     if (graph?.isStopped) return null;
     hooks?.onNodeStart?.(this.id);
     const logger = hooks?.logger || this.logger;
 
-    // The test expects round-robin behavior where it tries each node in order.
-    // The original 'strategy' logic for picking one node is not what's needed here.
-    // We will iterate through all nodes until one fails.
-    for (const node of this.nodes) {
-      const health = this.nodeHealth.get(node.id);
-      if (health && !health.healthy) {
-        continue; // Skip unhealthy nodes
-      }
-
-      try {
-        // We directly process the sub-node.
-        const result = await node.process(input, graph, hooks);
-
-        // The test fails if a node returns null, so we can treat that as an error.
-        if (result === null) {
-          throw new Error(`Node ${node.id} returned null`);
-        }
-
-        // If successful, send the result to the main data outlet.
-        if (this.outlets[0]) {
-          await this.outlets[0].send(result, graph, hooks);
-        }
-      } catch (error) {
-        logger.warn(
-          { err: error, nodeId: node.id },
-          `Node ${node.id} failed in load balancer. Marking as unhealthy.`
-        );
-        if (health) {
-          health.healthy = false;
-          health.lastCheck = Date.now();
-        }
-        // Send the error to the error outlet.
-        this.sendError(error as Error, input, graph, hooks);
-        // Stop processing on the first failure as per the test's implicit requirement.
-        break;
-      }
+    if (input === null && this.initialValue !== null) {
+      input = this.initialValue;
     }
 
-    hooks?.onNodeComplete?.(this.id, null);
-    // This node's job is to dispatch, not to return a single value.
-    return null;
+    const healthyNodes = this.nodes.filter((node) => {
+      const health = this.nodeHealth.get(node.id);
+      return health && health.healthy;
+    });
+
+    if (healthyNodes.length === 0) {
+      this.sendError(new Error("No healthy nodes available"), input, graph, hooks);
+      hooks?.onNodeComplete?.(this.id, null);
+      return null;
+    }
+
+    let selectedNode: AdaptiveNode<T, U>;
+    if (this.strategy === "round-robin") {
+      this.index = (this.index || 0) % healthyNodes.length;
+      selectedNode = healthyNodes[this.index];
+      this.index++;
+    } else {
+      // Random strategy
+      const randomIndex = Math.floor(Math.random() * healthyNodes.length);
+      selectedNode = healthyNodes[randomIndex];
+    }
+
+    let result: U | null = null;
+    try {
+      result = await selectedNode.process(input, graph, hooks);
+      if (result === null) {
+        throw new Error(`Node ${selectedNode.id} returned null`);
+      }
+      if (this.outlets[0]) {
+        await this.outlets[0].send(result, graph, hooks);
+      }
+    } catch (error) {
+      logger.warn(
+        { err: error, nodeId: selectedNode.id },
+        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`
+      );
+      const health = this.nodeHealth.get(selectedNode.id);
+      if (health) {
+        health.healthy = false;
+        health.lastCheck = Date.now();
+      }
+      this.sendError(error as Error, input, graph, hooks);
+      result = null;
+    }
+
+    hooks?.onNodeComplete?.(this.id, result);
+    return result;
   }
 
   destroy(): void {

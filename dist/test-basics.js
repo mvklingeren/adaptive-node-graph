@@ -575,34 +575,51 @@ var LoadBalancerNode = class extends AdaptiveNode {
     if (graph?.isStopped) return null;
     hooks?.onNodeStart?.(this.id);
     const logger = hooks?.logger || this.logger;
-    for (const node of this.nodes) {
-      const health = this.nodeHealth.get(node.id);
-      if (health && !health.healthy) {
-        continue;
-      }
-      try {
-        const result = await node.process(input, graph, hooks);
-        if (result === null) {
-          throw new Error(`Node ${node.id} returned null`);
-        }
-        if (this.outlets[0]) {
-          await this.outlets[0].send(result, graph, hooks);
-        }
-      } catch (error) {
-        logger.warn(
-          { err: error, nodeId: node.id },
-          `Node ${node.id} failed in load balancer. Marking as unhealthy.`
-        );
-        if (health) {
-          health.healthy = false;
-          health.lastCheck = Date.now();
-        }
-        this.sendError(error, input, graph, hooks);
-        break;
-      }
+    if (input === null && this.initialValue !== null) {
+      input = this.initialValue;
     }
-    hooks?.onNodeComplete?.(this.id, null);
-    return null;
+    const healthyNodes = this.nodes.filter((node) => {
+      const health = this.nodeHealth.get(node.id);
+      return health && health.healthy;
+    });
+    if (healthyNodes.length === 0) {
+      this.sendError(new Error("No healthy nodes available"), input, graph, hooks);
+      hooks?.onNodeComplete?.(this.id, null);
+      return null;
+    }
+    let selectedNode;
+    if (this.strategy === "round-robin") {
+      this.index = (this.index || 0) % healthyNodes.length;
+      selectedNode = healthyNodes[this.index];
+      this.index++;
+    } else {
+      const randomIndex = Math.floor(Math.random() * healthyNodes.length);
+      selectedNode = healthyNodes[randomIndex];
+    }
+    let result = null;
+    try {
+      result = await selectedNode.process(input, graph, hooks);
+      if (result === null) {
+        throw new Error(`Node ${selectedNode.id} returned null`);
+      }
+      if (this.outlets[0]) {
+        await this.outlets[0].send(result, graph, hooks);
+      }
+    } catch (error) {
+      logger.warn(
+        { err: error, nodeId: selectedNode.id },
+        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`
+      );
+      const health = this.nodeHealth.get(selectedNode.id);
+      if (health) {
+        health.healthy = false;
+        health.lastCheck = Date.now();
+      }
+      this.sendError(error, input, graph, hooks);
+      result = null;
+    }
+    hooks?.onNodeComplete?.(this.id, result);
+    return result;
   }
   destroy() {
     clearInterval(this.healthCheckTimer);
