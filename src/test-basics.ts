@@ -77,17 +77,18 @@ tests["Conditional Routing"] = async () => {
   const graph = new Graph();
 
   // Nodes
-  const tempSensor = createProcessor(() => 42, "temp-sensor"); // Fixed temp for predictability
+  const tempSensor = createProcessor((input: number | null) => input ?? 42, "temp-sensor");
   const alertNode = new TestNode<number>().setName("alert");
   const normalNode = new TestNode<number>().setName("normal");
 
   // Custom router node to direct traffic
-  const router = new AdaptiveNode<number, void>((temp) => {
+  const router = new AdaptiveNode<number, number>(async (temp) => {
     if (temp > 30) {
-      alertNode.process(temp);
+      await alertNode.process(temp);
     } else {
-      normalNode.process(temp);
+      await normalNode.process(temp);
     }
+    return temp;
   }).setName("router");
 
   graph.addNode(tempSensor).addNode(router).addNode(alertNode).addNode(normalNode);

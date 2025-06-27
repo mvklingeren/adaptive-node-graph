@@ -708,15 +708,16 @@ tests["Basic Math Graph"] = async () => {
 };
 tests["Conditional Routing"] = async () => {
   const graph = new Graph();
-  const tempSensor = createProcessor(() => 42, "temp-sensor");
+  const tempSensor = createProcessor((input) => input ?? 42, "temp-sensor");
   const alertNode = new TestNode().setName("alert");
   const normalNode = new TestNode().setName("normal");
-  const router = new AdaptiveNode((temp) => {
+  const router = new AdaptiveNode(async (temp) => {
     if (temp > 30) {
-      alertNode.process(temp);
+      await alertNode.process(temp);
     } else {
-      normalNode.process(temp);
+      await normalNode.process(temp);
     }
+    return temp;
   }).setName("router");
   graph.addNode(tempSensor).addNode(router).addNode(alertNode).addNode(normalNode);
   graph.connect(tempSensor, router);

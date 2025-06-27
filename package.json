@@ -21,6 +21,7 @@
     "build:watch": "esbuild src/**/*.ts --bundle --platform=node --target=node18 --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash] --watch",
     "test-basics": "esbuild src/test-basics.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-basics.js --external:pino && node dist/test-basics.js",
     "test-improvements": "esbuild src/test-improvements.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-improvements.js --external:pino && node dist/test-improvements.js",
+    "test-complex": "esbuild src/test-complex.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-complex.js --external:pino && node dist/test-complex.js",
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
