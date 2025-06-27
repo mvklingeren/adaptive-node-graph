@@ -342,6 +342,14 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     this.errorCount = 0;
     return this;
   }
+
+  /**
+   * Cleans up any resources used by the node, like timers or intervals.
+   * Override in subclasses for custom cleanup logic.
+   */
+  destroy(): void {
+    // Base implementation does nothing.
+  }
 }
 
 // ============================================================================
@@ -420,6 +428,9 @@ export class Graph {
   removeNode(nodeId: string): this {
     const node = this.nodes.get(nodeId);
     if (!node) return this;
+
+    // Clean up node-specific resources
+    node.destroy();
 
     // Remove all connections involving this node
     for (const conn of this.connections) {
@@ -615,49 +626,63 @@ export class Graph {
       }
     }
 
-    while (queue.length > 0) {
+    let processedCount = 0;
+    while (processedCount < this.nodes.size) {
       if (this.isStopped) break;
+      if (queue.length === 0) {
+        const logger = hooks?.logger || pino();
+        logger.warn(
+          {
+            totalNodes: this.nodes.size,
+            executedNodes: results.size,
+          },
+          "Parallel execution stalled. A cycle may be present or graph is disconnected."
+        );
+        break;
+      }
 
-      const levelNodes = [...queue];
-      queue.length = 0;
+      const node = queue.shift()!;
+      processedCount++;
 
-      const levelPromises = levelNodes.map(async (node) => {
-        // Find the correct input for the current node
-        // This is a simplified model; a real implementation might need to aggregate inputs
-        const input =
-          initialInputs.get(node.id) ||
-          Array.from(dependencies.get(node.id) || [])
-            .map((depId) => results.get(depId))
-            .find((res) => res !== undefined);
+      // Aggregate inputs from dependencies
+      const nodeDependencies = dependencies.get(node.id) || new Set();
+      const aggregatedInputs = Array.from(nodeDependencies).map((depId) =>
+        results.get(depId)
+      );
 
-        const result = await node.process(input, this, hooks);
-        results.set(node.id, result);
+      // Use initial input if provided, otherwise use aggregated inputs.
+      // If only one dependency, pass its result directly, not in an array.
+      const input =
+        initialInputs.get(node.id) ??
+        (aggregatedInputs.length === 1
+          ? aggregatedInputs[0]
+          : aggregatedInputs);
 
-        // Decrement in-degree of downstream nodes
-        for (const conn of this.connections) {
-          if (conn.source.id === node.id) {
-            const targetId = conn.target.id;
-            const currentInDegree = (inDegree.get(targetId) || 1) - 1;
-            inDegree.set(targetId, currentInDegree);
-            if (currentInDegree === 0) {
-              const targetNode = this.nodes.get(targetId);
-              if (targetNode) queue.push(targetNode);
-            }
+      const result = await node.process(input, this, hooks);
+      results.set(node.id, result);
+
+      // Decrement in-degree of downstream nodes
+      for (const conn of this.connections) {
+        if (conn.source.id === node.id) {
+          const targetId = conn.target.id;
+          const currentInDegree = (inDegree.get(targetId) || 1) - 1;
+          inDegree.set(targetId, currentInDegree);
+          if (currentInDegree === 0) {
+            const targetNode = this.nodes.get(targetId);
+            if (targetNode) queue.push(targetNode);
           }
         }
-      });
-
-      await Promise.all(levelPromises);
+      }
     }
 
-    if (results.size < this.nodes.size) {
+    if (results.size < this.nodes.size && !this.isStopped) {
       const logger = hooks?.logger || pino();
       logger.warn(
         {
           totalNodes: this.nodes.size,
           executedNodes: results.size,
         },
-        "Parallel execution did not execute all nodes. A cycle may be present."
+        "Parallel execution did not execute all nodes."
       );
     }
 
@@ -692,29 +717,36 @@ export const createDelayNode = (ms: number) =>
   }).setName(`delay(${ms}ms)`);
 
 export const createThrottleNode = (ms: number) => {
-  let lastEmit = 0;
-  return new AdaptiveNode((input: any) => {
-    const now = Date.now();
-    if (now - lastEmit >= ms) {
-      lastEmit = now;
-      return input;
-    }
-    return null; // skip
-  }).setName(`throttle(${ms}ms)`);
+  return new AdaptiveNode(
+    (() => {
+      let lastEmit = 0;
+      return (input: any) => {
+        const now = Date.now();
+        if (now - lastEmit >= ms) {
+          lastEmit = now;
+          return input;
+        }
+        return null; // skip
+      };
+    })()
+  ).setName(`throttle(${ms}ms)`);
 };
 
 export const createDebounceNode = (ms: number) => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  return new AdaptiveNode(async (input: any) => {
-    if (timeoutId) clearTimeout(timeoutId);
-    return new Promise((resolve) => {
-      timeoutId = setTimeout(() => {
-        resolve(input);
-        timeoutId = null;
-      }, ms);
-    });
-  }).setName(`debounce(${ms}ms)`);
+  return new AdaptiveNode(
+    (() => {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      return async (input: any) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        return new Promise((resolve) => {
+          timeoutId = setTimeout(() => {
+            resolve(input);
+            timeoutId = null;
+          }, ms);
+        });
+      };
+    })()
+  ).setName(`debounce(${ms}ms)`);
 };
 
 // ============================================================================
@@ -759,19 +791,15 @@ export class TestNode<T> extends AdaptiveNode<T, T> {
   public errors: NodeError[] = [];
 
   constructor(processor?: Processor<T, T>) {
-    const capturingProcessor: Processor<T, T> = (input) => {
+    const capturingProcessor: Processor<T, T> = async (input) => {
       this.receivedInputs.push(input);
-      return processor ? processor(input) : input;
+      const output = await (processor ? processor(input) : input);
+      this.processedOutputs.push(output);
+      return output;
     };
 
     super(capturingProcessor);
     this.setName("test");
-
-    // Attach a hook to capture outputs
-    this.onProcess = (_id, data) => {
-      // This captures the final output of the node
-      this.processedOutputs.push(data);
-    };
 
     // Connect a dedicated error handler to capture errors
     const errorCollector = new AdaptiveNode<NodeError, void>((error) => {
@@ -998,59 +1026,55 @@ export const createRouterNode = () =>
     .setName("router");
 
 // Load Balancer
-export function createLoadBalancerNode<T, U>(
-  nodes: AdaptiveNode<T, U>[],
-  options: {
-    strategy?: "round-robin" | "random" | "least-loaded";
-    healthCheckInterval?: number; // in ms
-  } = {}
-): AdaptiveNode<T, U> {
-  const { strategy = "round-robin", healthCheckInterval = 30000 } = options;
-  let index = 0;
-  const nodeHealth = new Map(
-    nodes.map((n) => [n.id, { healthy: true, lastCheck: 0 }])
-  );
+class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
+  private index = 0;
+  private nodeHealth: Map<string, { healthy: boolean; lastCheck: number }>;
+  private healthCheckTimer: ReturnType<typeof setInterval>;
 
-  // Periodically try to bring back unhealthy nodes
-  const healthCheckTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [nodeId, health] of nodeHealth.entries()) {
-      if (!health.healthy && now - health.lastCheck > healthCheckInterval) {
-        // In a real app, you'd use a passed-in logger.
-        // console.log is a fallback for this standalone utility.
-        console.log(`Retrying health check for unhealthy node ${nodeId}`);
-        health.healthy = true; // Mark as healthy to allow a new request
-        health.lastCheck = now;
+  constructor(
+    private nodes: AdaptiveNode<T, U>[],
+    private strategy: "round-robin" | "random" | "least-loaded" = "round-robin",
+    healthCheckInterval: number = 30000
+  ) {
+    super(async () => null as U); // The actual logic is in executeProcessor
+    this.nodeHealth = new Map(
+      nodes.map((n) => [n.id, { healthy: true, lastCheck: 0 }])
+    );
+
+    this.healthCheckTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [nodeId, health] of this.nodeHealth.entries()) {
+        if (!health.healthy && now - health.lastCheck > healthCheckInterval) {
+          console.log(`Retrying health check for unhealthy node ${nodeId}`);
+          health.healthy = true;
+          health.lastCheck = now;
+        }
       }
-    }
-  }, healthCheckInterval);
+    }, healthCheckInterval);
+  }
 
-  const loadBalancer = new AdaptiveNode<T, U>(async (input) => {
-    let nodesToTry = nodes.filter((n) => nodeHealth.get(n.id)?.healthy);
+  protected async executeProcessor(input: T): Promise<U> {
+    const nodesToTry = this.nodes.filter(
+      (n) => this.nodeHealth.get(n.id)?.healthy
+    );
     if (nodesToTry.length === 0) {
       throw new Error("No healthy nodes available in load balancer.");
     }
 
     let selectedNode: AdaptiveNode<T, U> | undefined;
-    let nodeIndexInTryList: number = -1;
 
-    // Node selection logic
-    switch (strategy) {
+    switch (this.strategy) {
       case "random":
-        nodeIndexInTryList = Math.floor(Math.random() * nodesToTry.length);
-        selectedNode = nodesToTry[nodeIndexInTryList];
+        selectedNode =
+          nodesToTry[Math.floor(Math.random() * nodesToTry.length)];
         break;
       case "least-loaded":
-        // This is still simplified. A real implementation would need to track active requests.
-        // For now, it just picks the first available healthy node.
         selectedNode = nodesToTry[0];
-        nodeIndexInTryList = 0;
         break;
       default: // round-robin
-        index = index % nodesToTry.length;
-        selectedNode = nodesToTry[index];
-        nodeIndexInTryList = index;
-        index++;
+        this.index = this.index % nodesToTry.length;
+        selectedNode = nodesToTry[this.index];
+        this.index++;
         break;
     }
 
@@ -1061,31 +1085,42 @@ export function createLoadBalancerNode<T, U>(
     try {
       const result = await selectedNode.process(input);
       if (result === null) {
-        // Consider null result as a failure for load balancing purposes
         throw new Error(`Node ${selectedNode.id} returned null`);
       }
       return result;
     } catch (error) {
-      // console.warn is fine here for now as it's a utility function.
-      // A more advanced implementation would pass a logger through hooks.
       console.warn(
         `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`,
         error
       );
-      const health = nodeHealth.get(selectedNode.id);
+      const health = this.nodeHealth.get(selectedNode.id);
       if (health) {
         health.healthy = false;
         health.lastCheck = Date.now();
       }
-      // Instead of recursively calling or looping, we throw, letting a higher-level retry mechanism handle it.
-      // This simplifies the logic and prevents complex state management within a single process call.
       throw new Error(
         `Node ${selectedNode.id} failed. All other nodes were skipped.`
       );
     }
-  });
+  }
 
-  return loadBalancer.setName(`loadBalance(${strategy})`);
+  destroy(): void {
+    clearInterval(this.healthCheckTimer);
+    super.destroy();
+  }
+}
+
+export function createLoadBalancerNode<T, U>(
+  nodes: AdaptiveNode<T, U>[],
+  options: {
+    strategy?: "round-robin" | "random" | "least-loaded";
+    healthCheckInterval?: number; // in ms
+  } = {}
+): AdaptiveNode<T, U> {
+  const { strategy = "round-robin", healthCheckInterval = 30000 } = options;
+  return new LoadBalancerNode(nodes, strategy, healthCheckInterval).setName(
+    `loadBalance(${strategy})`
+  );
 }
 
 // Parallel Processor
@@ -1107,42 +1142,45 @@ export function createCacheNode<T, U>(
   } = {}
 ): AdaptiveNode<T, U> {
   const { ttl = 1000, maxSize = 100, getKey = JSON.stringify } = options;
-  const cache = new Map<string, { value: U; timestamp: number }>();
 
-  // LRU cache eviction
-  const evictOldest = () => {
-    let oldestKey: string | undefined;
-    let oldestTimestamp = Infinity;
-    for (const [key, value] of cache.entries()) {
-      if (value.timestamp < oldestTimestamp) {
-        oldestTimestamp = value.timestamp;
-        oldestKey = key;
-      }
-    }
-    if (oldestKey) {
-      cache.delete(oldestKey);
-    }
-  };
+  return new AdaptiveNode<T, U>(
+    (() => {
+      const cache = new Map<string, { value: U; timestamp: number }>();
 
-  return new AdaptiveNode<T, U>(async (input: T) => {
-    const key = getKey(input);
-    const cached = cache.get(key);
+      const evictOldest = () => {
+        let oldestKey: string | undefined;
+        let oldestTimestamp = Infinity;
+        for (const [key, value] of cache.entries()) {
+          if (value.timestamp < oldestTimestamp) {
+            oldestTimestamp = value.timestamp;
+            oldestKey = key;
+          }
+        }
+        if (oldestKey) {
+          cache.delete(oldestKey);
+        }
+      };
 
-    const now = Date.now();
-    if (cached && now - cached.timestamp < ttl) {
-      // Refresh timestamp for LRU
-      cached.timestamp = now;
-      return cached.value;
-    }
+      return async (input: T) => {
+        const key = getKey(input);
+        const cached = cache.get(key);
 
-    const result = await processor(input);
-    if (cache.size >= maxSize) {
-      evictOldest();
-    }
-    cache.set(key, { value: result, timestamp: now });
+        const now = Date.now();
+        if (cached && now - cached.timestamp < ttl) {
+          cached.timestamp = now;
+          return cached.value;
+        }
 
-    return result;
-  }).setName(`cache(${ttl}ms)`);
+        const result = await processor(input);
+        if (cache.size >= maxSize) {
+          evictOldest();
+        }
+        cache.set(key, { value: result, timestamp: now });
+
+        return result;
+      };
+    })()
+  ).setName(`cache(${ttl}ms)`);
 }
 
 // ============================================================================
