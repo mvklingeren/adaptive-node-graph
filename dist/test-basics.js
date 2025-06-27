@@ -818,8 +818,6 @@ tests["Real-time Stream Load Balancer"] = async () => {
   const worker2 = new TestNode().setName("worker2");
   const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
   graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
-  graph.connect(loadBalancer, worker1);
-  graph.connect(loadBalancer, worker2);
   loadBalancer.setInitialValue({ data: 1 });
   await graph.execute(null, loadBalancer.id);
   loadBalancer.setInitialValue({ data: 2 });

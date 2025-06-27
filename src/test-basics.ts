@@ -250,8 +250,6 @@ tests["Real-time Stream Load Balancer"] = async () => {
   const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
   
   graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
-  graph.connect(loadBalancer, worker1);
-  graph.connect(loadBalancer, worker2);
 
   // The load balancer itself is the entry point
   loadBalancer.setInitialValue({ data: 1 });
