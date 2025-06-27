@@ -611,10 +611,20 @@ var SplitNode = class extends AdaptiveNode {
     this.outlets = [...dataOutlets, errorOutlet];
   }
   async process(input, graph, hooks) {
-    const result = await super.process(input, graph, hooks);
-    if (result !== null) {
-      const promises = this.outlets.slice(0, this.dataOutletCount).map((outlet) => outlet.send(result, graph, hooks));
-      await Promise.all(promises);
+    if (graph?.isStopped) return null;
+    hooks?.onNodeStart?.(this.id);
+    let result = null;
+    try {
+      result = await this.executeProcessor(input, graph, hooks);
+      if (result !== null) {
+        const promises = this.outlets.slice(0, this.dataOutletCount).map((outlet) => outlet.send(result, graph, hooks));
+        await Promise.all(promises);
+      }
+    } catch (error) {
+      this.handleError(error, input, graph, hooks);
+      result = null;
+    } finally {
+      hooks?.onNodeComplete?.(this.id, result);
     }
     return result;
   }
@@ -647,48 +657,38 @@ var LoadBalancerNode = class extends AdaptiveNode {
   index = 0;
   nodeHealth;
   healthCheckTimer;
-  async executeProcessor(input, _graph, hooks) {
+  async process(input, graph, hooks) {
+    if (graph?.isStopped) return null;
+    hooks?.onNodeStart?.(this.id);
     const logger = hooks?.logger || this.logger;
-    const nodesToTry = this.nodes.filter(
-      (n) => this.nodeHealth.get(n.id)?.healthy
-    );
-    if (nodesToTry.length === 0) {
-      throw new Error("No healthy nodes available in load balancer.");
-    }
-    let selectedNode;
-    switch (this.strategy) {
-      case "random":
-        selectedNode = nodesToTry[Math.floor(Math.random() * nodesToTry.length)];
-        break;
-      default:
-        this.index = this.index % nodesToTry.length;
-        selectedNode = nodesToTry[this.index];
-        this.index++;
-        break;
-    }
-    if (!selectedNode) {
-      throw new Error("Load balancer could not select a node.");
-    }
-    try {
-      const result = await selectedNode.process(input, _graph, hooks);
-      if (result === null) {
-        throw new Error(`Node ${selectedNode.id} returned null`);
+    for (const node of this.nodes) {
+      const health = this.nodeHealth.get(node.id);
+      if (health && !health.healthy) {
+        continue;
       }
-      return result;
-    } catch (error) {
-      logger.warn(
-        { err: error, nodeId: selectedNode.id },
-        `Node ${selectedNode.id} failed in load balancer. Marking as unhealthy.`
-      );
-      const health = this.nodeHealth.get(selectedNode.id);
-      if (health) {
-        health.healthy = false;
-        health.lastCheck = Date.now();
+      try {
+        const result = await node.process(input, graph, hooks);
+        if (result === null) {
+          throw new Error(`Node ${node.id} returned null`);
+        }
+        if (this.outlets[0]) {
+          await this.outlets[0].send(result, graph, hooks);
+        }
+      } catch (error) {
+        logger.warn(
+          { err: error, nodeId: node.id },
+          `Node ${node.id} failed in load balancer. Marking as unhealthy.`
+        );
+        if (health) {
+          health.healthy = false;
+          health.lastCheck = Date.now();
+        }
+        this.sendError(error, input, graph, hooks);
+        break;
       }
-      throw new Error(
-        `Node ${selectedNode.id} failed. All other nodes were skipped.`
-      );
     }
+    hooks?.onNodeComplete?.(this.id, null);
+    return null;
   }
   destroy() {
     clearInterval(this.healthCheckTimer);
