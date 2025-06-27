@@ -1,5 +1,5 @@
 // test-improvements.ts
-// Demonstrates the new features in core.ts
+// Verifiable tests for the new features in core.ts
 
 import {
   AdaptiveNode,
@@ -7,319 +7,261 @@ import {
   TestNode,
   createDelayNode,
   createThrottleNode,
-  createErrorLoggerNode,
+  createDebounceNode,
   createErrorRecoveryNode,
   createLoadBalancerNode,
   createCacheNode,
   SubGraphNode,
+  NodeError,
 } from "./core";
+import { strict as assert } from "assert";
 
 // ============================================================================
-// 1. Error Handling Demo
+// Test Runner
 // ============================================================================
 
-console.log('=== Error Handling Demo ===');
+const tests: { [key: string]: () => Promise<void> } = {};
 
-async function errorHandlingDemo() {
-  const graph = new Graph();
-  
-  // Create a node that sometimes fails
-  const unreliableNode = new AdaptiveNode<number, number>((input) => {
-    if (input > 5) {
-      throw new Error(`Value ${input} is too high!`);
+async function runAllTests() {
+  let pass = 0;
+  let fail = 0;
+
+  for (const testName in tests) {
+    try {
+      await tests[testName]();
+      console.log(`✓ ${testName}`);
+      pass++;
+    } catch (error) {
+      console.error(`✗ ${testName}`);
+      console.error(error);
+      fail++;
     }
-    return input * 2;
-  }).setName('unreliable');
-  
-  // Error logger
-  const errorLogger = createErrorLoggerNode();
-  
-  // Error recovery with default value
-  const errorRecovery = createErrorRecoveryNode(0);
-  
-  // Add nodes to graph
-  graph.addNode(unreliableNode);
-  graph.addNode(errorLogger);
-  graph.addNode(errorRecovery);
-  
-  // Connect error handling
-  graph.connectError(unreliableNode, errorLogger);
-  graph.connect(errorLogger, errorRecovery);
-  
-  // Test with valid input
-  console.log('Processing 3:', await unreliableNode.process(3)); // Should work: 6
-  
-  // Test with invalid input
-  console.log('Processing 10:', await unreliableNode.process(10)); // Should fail and recover
+  }
+
+  console.log(`\nTests complete: ${pass} passed, ${fail} failed.`);
+  if (fail > 0) {
+    process.exit(1);
+  }
 }
 
 // ============================================================================
-// 2. Type Safety Demo
+// 1. Error Handling and Recovery Test
 // ============================================================================
 
-console.log('\n=== Type Safety Demo ===');
-
-function typeSafetyDemo() {
-  // These connections are type-safe at compile time
-  const numberNode = new AdaptiveNode<number, string>((n) => n.toString());
-  const stringNode = new AdaptiveNode<string, boolean>((s) => s.length > 0);
-  
+tests["Error Handling and Recovery"] = async () => {
   const graph = new Graph();
-  graph.addNode(numberNode);
-  graph.addNode(stringNode);
-  
-  // This connection is type-safe - string output connects to string input
-  graph.connect(numberNode, stringNode);
-  
-  // This would cause a TypeScript error if uncommented:
-  // graph.connect(stringNode, numberNode); // Error: boolean doesn't match number
-  
-  console.log('Type-safe connections established');
-}
+
+  const unreliableNode = new AdaptiveNode<number, number>((input) => {
+    if (input > 5) throw new Error("Value too high");
+    return input * 2;
+  }).setName("unreliable");
+
+  const errorCapture = new TestNode<NodeError>().setName("errorCapture");
+  const recoveryNode = createErrorRecoveryNode(-1); // Recover with -1
+  const finalOutput = new TestNode<number>().setName("finalOutput");
+
+  graph
+    .addNode(unreliableNode)
+    .addNode(errorCapture)
+    .addNode(recoveryNode)
+    .addNode(finalOutput);
+
+  graph.connect(unreliableNode, finalOutput); // Main data path
+  graph.connectError(unreliableNode, errorCapture);
+  graph.connect(errorCapture, recoveryNode);
+  graph.connect(recoveryNode, finalOutput); // Recovered data path
+
+  // Test success path
+  await graph.execute(3, unreliableNode.id);
+  finalOutput.assertReceived([6]);
+  errorCapture.assertReceived([]);
+
+  // Test error path
+  finalOutput.reset();
+  await graph.execute(10, unreliableNode.id);
+  assert.equal(errorCapture.receivedInputs.length, 1, "Error was not captured");
+  finalOutput.assertReceived([-1]); // Should receive the recovered value
+};
 
 // ============================================================================
-// 3. Async Flow Control Demo
+// 2. Async Flow Control Test
 // ============================================================================
 
-console.log('\n=== Async Flow Control Demo ===');
+tests["Async Flow Control with maxConcurrent"] = async () => {
+  let concurrentCount = 0;
+  let maxConcurrent = 0;
 
-async function flowControlDemo() {
-  // Create a node with limited concurrency
   const slowNode = new AdaptiveNode<number, number>(
     async (input) => {
-      console.log(`Processing ${input}...`);
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return input * 2;
+      concurrentCount++;
+      maxConcurrent = Math.max(maxConcurrent, concurrentCount);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      concurrentCount--;
+      return input;
     },
-    { maxConcurrent: 2 } // Only 2 concurrent operations
-  ).setName('slowNode');
-  
-  // Fire multiple requests
-  const promises = [];
-  for (let i = 0; i < 5; i++) {
-    promises.push(slowNode.process(i));
-  }
-  
-  console.log('Started 5 operations with max concurrency of 2');
-  const results = await Promise.all(promises);
-  console.log('Results:', results);
-}
+    { maxConcurrent: 2 }
+  ).setName("slowNode");
+
+  const promises = Array.from({ length: 5 }, (_, i) => slowNode.process(i));
+  await Promise.all(promises);
+
+  assert.equal(maxConcurrent, 2, "Concurrency limit was not respected");
+};
 
 // ============================================================================
-// 4. Time-based Operators Demo
+// 3. Time-based Operators Test
 // ============================================================================
 
-console.log('\n=== Time-based Operators Demo ===');
-
-async function timeBasedDemo() {
-  const graph = new Graph();
-  
-  // Delay node
-  const delayNode = createDelayNode(500);
-  
-  // Throttle node (max 1 per second)
-  const throttleNode = createThrottleNode(1000);
-  
-  // Test delay
-  console.log('Testing delay node...');
+tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
+  // Test Delay
+  const delayNode = createDelayNode(100);
   const start = Date.now();
-  await delayNode.process('delayed');
-  console.log(`Delayed by ${Date.now() - start}ms`);
-  
-  // Test throttle
-  console.log('\nTesting throttle node...');
-  for (let i = 0; i < 5; i++) {
-    const result = await throttleNode.process(i);
-    console.log(`Throttle result ${i}:`, result);
-    await new Promise(resolve => setTimeout(resolve, 300));
-  }
-}
+  await delayNode.process(null);
+  const duration = Date.now() - start;
+  assert(duration >= 100, `Delay was too short: ${duration}ms`);
+
+  // Test Throttle
+  const throttleNode = createThrottleNode(100);
+  const throttleOutput = new TestNode<number>().setName("throttleOutput");
+  throttleNode.outlets[0].connections.push({
+    target: throttleOutput,
+    transfer: async (data: number) => throttleOutput.process(data),
+  } as any);
+
+  await throttleNode.process(1); // Should pass
+  await throttleNode.process(2); // Should be skipped
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  await throttleNode.process(3); // Should pass
+
+  throttleOutput.assertReceived([1, 3]);
+
+  // Test Debounce
+  const debounceNode = createDebounceNode(100);
+  const debounceOutput = new TestNode<number>().setName("debounceOutput");
+  debounceNode.outlets[0].connections.push({
+    target: debounceOutput,
+    transfer: async (data: number) => debounceOutput.process(data),
+  } as any);
+
+  await debounceNode.process(1);
+  await debounceNode.process(2);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await debounceNode.process(3); // This should be the one that resolves
+  await new Promise((resolve) => setTimeout(resolve, 110));
+
+  debounceOutput.assertReceived([3]);
+};
 
 // ============================================================================
-// 5. Testing Utilities Demo
+// 4. Circuit Breaker Test
 // ============================================================================
 
-console.log('\n=== Testing Utilities Demo ===');
-
-async function testingDemo() {
-  // Create test nodes
-  const testNode1 = new TestNode<number>();
-  const testNode2 = new TestNode<number>((n) => n * 2);
-  
-  const graph = new Graph();
-  graph.addNode(testNode1);
-  graph.addNode(testNode2);
-  graph.connect(testNode1, testNode2);
-  
-  // Process some data
-  await testNode1.process(5);
-  await testNode1.process(10);
-  
-  // Assert results
-  try {
-    testNode1.assertReceived([5, 10]);
-    testNode2.assertProcessed([10, 20]);
-    testNode1.assertNoErrors();
-    console.log('All tests passed!');
-  } catch (error) {
-    console.error('Test failed:', error);
-  }
-}
-
-// ============================================================================
-// 6. Circuit Breaker Demo
-// ============================================================================
-
-console.log('\n=== Circuit Breaker Demo ===');
-
-async function circuitBreakerDemo() {
-  // Create a node that always fails
+tests["Circuit Breaker"] = async () => {
   const failingNode = new AdaptiveNode<number, number>(
-    () => {
-      throw new Error('Always fails');
-    },
-    { 
-      circuitBreakerThreshold: 3,
-      circuitBreakerResetTime: 2000 
-    }
-  ).setName('failing');
-  
-  const errorLogger = createErrorLoggerNode();
-  const graph = new Graph();
-  graph.addNode(failingNode);
-  graph.addNode(errorLogger);
-  graph.connectError(failingNode, errorLogger);
-  
-  // Try to process multiple times
-  console.log('Attempting to trigger circuit breaker...');
-  for (let i = 0; i < 5; i++) {
-    await failingNode.process(i);
-    console.log(`Attempt ${i + 1} completed`);
-  }
-  
-  console.log('Circuit breaker should be open now');
-  
+    () => { throw new Error("Failure"); },
+    { circuitBreakerThreshold: 2, circuitBreakerResetTime: 200 }
+  ).setName("failing");
+
+  const errorCapture = new TestNode<NodeError>().setName("errorCapture");
+  failingNode.outlets[1].connections.push({
+    target: errorCapture,
+    transfer: async (data: NodeError) => errorCapture.process(data),
+  } as any);
+
+  // Trigger the breaker
+  await failingNode.process(1);
+  await failingNode.process(2);
+  assert.equal(errorCapture.receivedInputs.length, 2, "Errors not captured before break");
+
+  // Breaker should be open
+  await failingNode.process(3);
+  assert.equal(errorCapture.receivedInputs.length, 3, "Open circuit error not captured");
+  assert(errorCapture.receivedInputs[2].error.message.includes("Circuit breaker is open"));
+
   // Wait for reset
-  console.log('Waiting 2 seconds for circuit breaker reset...');
-  await new Promise(resolve => setTimeout(resolve, 2100));
-  
-  // Try again
-  console.log('Trying again after reset...');
-  await failingNode.process(99);
-}
+  await new Promise((resolve) => setTimeout(resolve, 210));
+
+  // Breaker should be closed
+  await failingNode.process(4);
+  assert.equal(errorCapture.receivedInputs.length, 4, "Error not captured after reset");
+  assert.equal(errorCapture.receivedInputs[3].error.message, "Failure");
+};
 
 // ============================================================================
-// 7. Load Balancer Demo
+// 5. Load Balancer Test
 // ============================================================================
 
-console.log('\n=== Load Balancer Demo ===');
+tests["Load Balancer (Round Robin)"] = async () => {
+  const worker1 = new TestNode<number>().setName("worker1");
+  const worker2 = new TestNode<number>().setName("worker2");
+  const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
 
-async function loadBalancerDemo() {
-  // Create worker nodes
-  const workers = [
-    new AdaptiveNode<number, string>((n) => `Worker1: ${n}`).setName('worker1'),
-    new AdaptiveNode<number, string>((n) => `Worker2: ${n}`).setName('worker2'),
-    new AdaptiveNode<number, string>((n) => `Worker3: ${n}`).setName('worker3')
-  ];
-  
-  // Create load balancer
-  const loadBalancer = createLoadBalancerNode(workers, 'round-robin');
-  
-  // Process multiple requests
-  console.log('Round-robin load balancing:');
-  for (let i = 0; i < 6; i++) {
-    const result = await loadBalancer.process(i);
-    console.log(result);
-  }
-}
+  await loadBalancer.process(1);
+  await loadBalancer.process(2);
+  await loadBalancer.process(3);
+
+  worker1.assertReceived([1, 3]);
+  worker2.assertReceived([2]);
+};
 
 // ============================================================================
-// 8. Cache Node Demo
+// 6. Cache Node Test
 // ============================================================================
 
-console.log('\n=== Cache Node Demo ===');
-
-async function cacheDemo() {
+tests["Cache Node"] = async () => {
   let computeCount = 0;
-  
-  // Create expensive computation
   const expensiveCompute = async (n: number) => {
     computeCount++;
-    console.log(`Computing ${n}... (computation #${computeCount})`);
-    await new Promise(resolve => setTimeout(resolve, 100));
     return n * n;
   };
-  
-  // Create cached version
-  const cachedNode = createCacheNode(expensiveCompute, 1000, 10);
-  
-  // First calls - will compute
-  console.log('First calls:');
-  console.log(await cachedNode.process(5));
-  console.log(await cachedNode.process(10));
-  
-  // Repeated calls - will use cache
-  console.log('\nRepeated calls (cached):');
-  console.log(await cachedNode.process(5));
-  console.log(await cachedNode.process(10));
-  
-  // Wait for cache expiry
-  console.log('\nWaiting for cache expiry...');
-  await new Promise(resolve => setTimeout(resolve, 1100));
-  
-  // Call again - will recompute
-  console.log('\nAfter cache expiry:');
-  console.log(await cachedNode.process(5));
-}
+
+  const cachedNode = createCacheNode(expensiveCompute, { ttl: 200 });
+
+  // First calls
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 1);
+  assert.equal(await cachedNode.process(10), 100);
+  assert.equal(computeCount, 2);
+
+  // Cached calls
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 2, "Cache was not used for first repeat");
+  assert.equal(await cachedNode.process(10), 100);
+  assert.equal(computeCount, 2, "Cache was not used for second repeat");
+
+  // Wait for expiry
+  await new Promise((resolve) => setTimeout(resolve, 210));
+
+  // Recompute after expiry
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 3, "Cache did not expire");
+};
 
 // ============================================================================
-// 9. Sub-graph Demo
+// 7. Sub-graph Test
 // ============================================================================
 
-console.log('\n=== Sub-graph Demo ===');
-
-async function subGraphDemo() {
-  // Create a sub-graph that adds numbers
+tests["Sub-graph Execution"] = async () => {
   const subGraph = new Graph();
-  const add1 = new AdaptiveNode<number, number>((n) => n + 1).setName('add1');
-  const add2 = new AdaptiveNode<number, number>((n) => n + 2).setName('add2');
-  
-  subGraph.addNode(add1);
-  subGraph.addNode(add2);
-  subGraph.connect(add1, add2);
-  
-  // Create sub-graph node
+  const add1 = new AdaptiveNode<number, number>((n) => n + 1).setName("add1");
+  const add2 = new AdaptiveNode<number, number>((n) => n + 2).setName("add2");
+  subGraph.addNode(add1).addNode(add2).connect(add1, add2);
+
   const subGraphNode = new SubGraphNode(subGraph, add1.id, add2.id);
-  
-  // Use it
-  const result = await subGraphNode.process(10);
-  console.log('Sub-graph result:', result); // Should be 13 (10 + 1 + 2)
-}
+  const mainGraph = new Graph().addNode(subGraphNode);
+  const output = new TestNode<number>().setName("output");
+  mainGraph.addNode(output).connect(subGraphNode, output);
+
+  await mainGraph.execute(10, subGraphNode.id);
+
+  output.assertReceived([13]); // 10 + 1 + 2
+};
 
 // ============================================================================
-// Run all demos
+// Run all tests
 // ============================================================================
 
-async function runAllDemos() {
-  try {
-    await errorHandlingDemo();
-    typeSafetyDemo();
-    await flowControlDemo();
-    await timeBasedDemo();
-    await testingDemo();
-    await circuitBreakerDemo();
-    await loadBalancerDemo();
-    await cacheDemo();
-    await subGraphDemo();
-    
-    console.log('\n=== All demos completed successfully! ===');
-  } catch (error) {
-    console.error('Demo error:', error);
-  }
-}
-
-// Export for use in other modules
-export { runAllDemos };
-
-// Run the demos when this file is executed directly
-runAllDemos().catch(console.error);
+runAllTests().catch((err) => {
+  console.error("Unhandled error during test execution:", err);
+  process.exit(1);
+});

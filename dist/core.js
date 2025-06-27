@@ -2,6 +2,7 @@ import {
   AdaptiveNode,
   Connection,
   Graph,
+  MergeNode,
   OscillatorNode,
   SplitNode,
   SubGraphNode,
@@ -29,11 +30,12 @@ import {
   createSubtractNode,
   createThrottleNode,
   testGraph
-} from "./chunks/chunk-Z4NUVEEI.js";
+} from "./chunks/chunk-QAOPQL62.js";
 export {
   AdaptiveNode,
   Connection,
   Graph,
+  MergeNode,
   OscillatorNode,
   SplitNode,
   SubGraphNode,

@@ -4,188 +4,170 @@ import {
   SubGraphNode,
   TestNode,
   createCacheNode,
+  createDebounceNode,
   createDelayNode,
-  createErrorLoggerNode,
   createErrorRecoveryNode,
   createLoadBalancerNode,
   createThrottleNode
-} from "./chunks/chunk-Z4NUVEEI.js";
+} from "./chunks/chunk-QAOPQL62.js";
 
 // src/test-improvements.ts
-console.log("=== Error Handling Demo ===");
-async function errorHandlingDemo() {
+import { strict as assert } from "assert";
+var tests = {};
+async function runAllTests() {
+  let pass = 0;
+  let fail = 0;
+  for (const testName in tests) {
+    try {
+      await tests[testName]();
+      console.log(`\u2713 ${testName}`);
+      pass++;
+    } catch (error) {
+      console.error(`\u2717 ${testName}`);
+      console.error(error);
+      fail++;
+    }
+  }
+  console.log(`
+Tests complete: ${pass} passed, ${fail} failed.`);
+  if (fail > 0) {
+    process.exit(1);
+  }
+}
+tests["Error Handling and Recovery"] = async () => {
   const graph = new Graph();
   const unreliableNode = new AdaptiveNode((input) => {
-    if (input > 5) {
-      throw new Error(`Value ${input} is too high!`);
-    }
+    if (input > 5) throw new Error("Value too high");
     return input * 2;
   }).setName("unreliable");
-  const errorLogger = createErrorLoggerNode();
-  const errorRecovery = createErrorRecoveryNode(0);
-  graph.addNode(unreliableNode);
-  graph.addNode(errorLogger);
-  graph.addNode(errorRecovery);
-  graph.connectError(unreliableNode, errorLogger);
-  graph.connect(errorLogger, errorRecovery);
-  console.log("Processing 3:", await unreliableNode.process(3));
-  console.log("Processing 10:", await unreliableNode.process(10));
-}
-console.log("\n=== Type Safety Demo ===");
-function typeSafetyDemo() {
-  const numberNode = new AdaptiveNode((n) => n.toString());
-  const stringNode = new AdaptiveNode((s) => s.length > 0);
-  const graph = new Graph();
-  graph.addNode(numberNode);
-  graph.addNode(stringNode);
-  graph.connect(numberNode, stringNode);
-  console.log("Type-safe connections established");
-}
-console.log("\n=== Async Flow Control Demo ===");
-async function flowControlDemo() {
+  const errorCapture = new TestNode().setName("errorCapture");
+  const recoveryNode = createErrorRecoveryNode(-1);
+  const finalOutput = new TestNode().setName("finalOutput");
+  graph.addNode(unreliableNode).addNode(errorCapture).addNode(recoveryNode).addNode(finalOutput);
+  graph.connect(unreliableNode, finalOutput);
+  graph.connectError(unreliableNode, errorCapture);
+  graph.connect(errorCapture, recoveryNode);
+  graph.connect(recoveryNode, finalOutput);
+  await graph.execute(3, unreliableNode.id);
+  finalOutput.assertReceived([6]);
+  errorCapture.assertReceived([]);
+  finalOutput.reset();
+  await graph.execute(10, unreliableNode.id);
+  assert.equal(errorCapture.receivedInputs.length, 1, "Error was not captured");
+  finalOutput.assertReceived([-1]);
+};
+tests["Async Flow Control with maxConcurrent"] = async () => {
+  let concurrentCount = 0;
+  let maxConcurrent = 0;
   const slowNode = new AdaptiveNode(
     async (input) => {
-      console.log(`Processing ${input}...`);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      return input * 2;
+      concurrentCount++;
+      maxConcurrent = Math.max(maxConcurrent, concurrentCount);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      concurrentCount--;
+      return input;
     },
     { maxConcurrent: 2 }
-    // Only 2 concurrent operations
   ).setName("slowNode");
-  const promises = [];
-  for (let i = 0; i < 5; i++) {
-    promises.push(slowNode.process(i));
-  }
-  console.log("Started 5 operations with max concurrency of 2");
-  const results = await Promise.all(promises);
-  console.log("Results:", results);
-}
-console.log("\n=== Time-based Operators Demo ===");
-async function timeBasedDemo() {
-  const graph = new Graph();
-  const delayNode = createDelayNode(500);
-  const throttleNode = createThrottleNode(1e3);
-  console.log("Testing delay node...");
+  const promises = Array.from({ length: 5 }, (_, i) => slowNode.process(i));
+  await Promise.all(promises);
+  assert.equal(maxConcurrent, 2, "Concurrency limit was not respected");
+};
+tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
+  const delayNode = createDelayNode(100);
   const start = Date.now();
-  await delayNode.process("delayed");
-  console.log(`Delayed by ${Date.now() - start}ms`);
-  console.log("\nTesting throttle node...");
-  for (let i = 0; i < 5; i++) {
-    const result = await throttleNode.process(i);
-    console.log(`Throttle result ${i}:`, result);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-}
-console.log("\n=== Testing Utilities Demo ===");
-async function testingDemo() {
-  const testNode1 = new TestNode();
-  const testNode2 = new TestNode((n) => n * 2);
-  const graph = new Graph();
-  graph.addNode(testNode1);
-  graph.addNode(testNode2);
-  graph.connect(testNode1, testNode2);
-  await testNode1.process(5);
-  await testNode1.process(10);
-  try {
-    testNode1.assertReceived([5, 10]);
-    testNode2.assertProcessed([10, 20]);
-    testNode1.assertNoErrors();
-    console.log("All tests passed!");
-  } catch (error) {
-    console.error("Test failed:", error);
-  }
-}
-console.log("\n=== Circuit Breaker Demo ===");
-async function circuitBreakerDemo() {
+  await delayNode.process(null);
+  const duration = Date.now() - start;
+  assert(duration >= 100, `Delay was too short: ${duration}ms`);
+  const throttleNode = createThrottleNode(100);
+  const throttleOutput = new TestNode().setName("throttleOutput");
+  throttleNode.outlets[0].connections.push({
+    target: throttleOutput,
+    transfer: async (data) => throttleOutput.process(data)
+  });
+  await throttleNode.process(1);
+  await throttleNode.process(2);
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  await throttleNode.process(3);
+  throttleOutput.assertReceived([1, 3]);
+  const debounceNode = createDebounceNode(100);
+  const debounceOutput = new TestNode().setName("debounceOutput");
+  debounceNode.outlets[0].connections.push({
+    target: debounceOutput,
+    transfer: async (data) => debounceOutput.process(data)
+  });
+  await debounceNode.process(1);
+  await debounceNode.process(2);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await debounceNode.process(3);
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  debounceOutput.assertReceived([3]);
+};
+tests["Circuit Breaker"] = async () => {
   const failingNode = new AdaptiveNode(
     () => {
-      throw new Error("Always fails");
+      throw new Error("Failure");
     },
-    {
-      circuitBreakerThreshold: 3,
-      circuitBreakerResetTime: 2e3
-    }
+    { circuitBreakerThreshold: 2, circuitBreakerResetTime: 200 }
   ).setName("failing");
-  const errorLogger = createErrorLoggerNode();
-  const graph = new Graph();
-  graph.addNode(failingNode);
-  graph.addNode(errorLogger);
-  graph.connectError(failingNode, errorLogger);
-  console.log("Attempting to trigger circuit breaker...");
-  for (let i = 0; i < 5; i++) {
-    await failingNode.process(i);
-    console.log(`Attempt ${i + 1} completed`);
-  }
-  console.log("Circuit breaker should be open now");
-  console.log("Waiting 2 seconds for circuit breaker reset...");
-  await new Promise((resolve) => setTimeout(resolve, 2100));
-  console.log("Trying again after reset...");
-  await failingNode.process(99);
-}
-console.log("\n=== Load Balancer Demo ===");
-async function loadBalancerDemo() {
-  const workers = [
-    new AdaptiveNode((n) => `Worker1: ${n}`).setName("worker1"),
-    new AdaptiveNode((n) => `Worker2: ${n}`).setName("worker2"),
-    new AdaptiveNode((n) => `Worker3: ${n}`).setName("worker3")
-  ];
-  const loadBalancer = createLoadBalancerNode(workers, "round-robin");
-  console.log("Round-robin load balancing:");
-  for (let i = 0; i < 6; i++) {
-    const result = await loadBalancer.process(i);
-    console.log(result);
-  }
-}
-console.log("\n=== Cache Node Demo ===");
-async function cacheDemo() {
+  const errorCapture = new TestNode().setName("errorCapture");
+  failingNode.outlets[1].connections.push({
+    target: errorCapture,
+    transfer: async (data) => errorCapture.process(data)
+  });
+  await failingNode.process(1);
+  await failingNode.process(2);
+  assert.equal(errorCapture.receivedInputs.length, 2, "Errors not captured before break");
+  await failingNode.process(3);
+  assert.equal(errorCapture.receivedInputs.length, 3, "Open circuit error not captured");
+  assert(errorCapture.receivedInputs[2].error.message.includes("Circuit breaker is open"));
+  await new Promise((resolve) => setTimeout(resolve, 210));
+  await failingNode.process(4);
+  assert.equal(errorCapture.receivedInputs.length, 4, "Error not captured after reset");
+  assert.equal(errorCapture.receivedInputs[3].error.message, "Failure");
+};
+tests["Load Balancer (Round Robin)"] = async () => {
+  const worker1 = new TestNode().setName("worker1");
+  const worker2 = new TestNode().setName("worker2");
+  const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
+  await loadBalancer.process(1);
+  await loadBalancer.process(2);
+  await loadBalancer.process(3);
+  worker1.assertReceived([1, 3]);
+  worker2.assertReceived([2]);
+};
+tests["Cache Node"] = async () => {
   let computeCount = 0;
   const expensiveCompute = async (n) => {
     computeCount++;
-    console.log(`Computing ${n}... (computation #${computeCount})`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
     return n * n;
   };
-  const cachedNode = createCacheNode(expensiveCompute, 1e3, 10);
-  console.log("First calls:");
-  console.log(await cachedNode.process(5));
-  console.log(await cachedNode.process(10));
-  console.log("\nRepeated calls (cached):");
-  console.log(await cachedNode.process(5));
-  console.log(await cachedNode.process(10));
-  console.log("\nWaiting for cache expiry...");
-  await new Promise((resolve) => setTimeout(resolve, 1100));
-  console.log("\nAfter cache expiry:");
-  console.log(await cachedNode.process(5));
-}
-console.log("\n=== Sub-graph Demo ===");
-async function subGraphDemo() {
+  const cachedNode = createCacheNode(expensiveCompute, { ttl: 200 });
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 1);
+  assert.equal(await cachedNode.process(10), 100);
+  assert.equal(computeCount, 2);
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 2, "Cache was not used for first repeat");
+  assert.equal(await cachedNode.process(10), 100);
+  assert.equal(computeCount, 2, "Cache was not used for second repeat");
+  await new Promise((resolve) => setTimeout(resolve, 210));
+  assert.equal(await cachedNode.process(5), 25);
+  assert.equal(computeCount, 3, "Cache did not expire");
+};
+tests["Sub-graph Execution"] = async () => {
   const subGraph = new Graph();
   const add1 = new AdaptiveNode((n) => n + 1).setName("add1");
   const add2 = new AdaptiveNode((n) => n + 2).setName("add2");
-  subGraph.addNode(add1);
-  subGraph.addNode(add2);
-  subGraph.connect(add1, add2);
+  subGraph.addNode(add1).addNode(add2).connect(add1, add2);
   const subGraphNode = new SubGraphNode(subGraph, add1.id, add2.id);
-  const result = await subGraphNode.process(10);
-  console.log("Sub-graph result:", result);
-}
-async function runAllDemos() {
-  try {
-    await errorHandlingDemo();
-    typeSafetyDemo();
-    await flowControlDemo();
-    await timeBasedDemo();
-    await testingDemo();
-    await circuitBreakerDemo();
-    await loadBalancerDemo();
-    await cacheDemo();
-    await subGraphDemo();
-    console.log("\n=== All demos completed successfully! ===");
-  } catch (error) {
-    console.error("Demo error:", error);
-  }
-}
-runAllDemos().catch(console.error);
-export {
-  runAllDemos
+  const mainGraph = new Graph().addNode(subGraphNode);
+  const output = new TestNode().setName("output");
+  mainGraph.addNode(output).connect(subGraphNode, output);
+  await mainGraph.execute(10, subGraphNode.id);
+  output.assertReceived([13]);
 };
+runAllTests().catch((err) => {
+  console.error("Unhandled error during test execution:", err);
+  process.exit(1);
+});

@@ -1,99 +1,59 @@
 // test-basics.ts
-// Contains all the basic tests from the /examples directory
+// Contains all the basic tests from the /examples directory, refactored into
+// a verifiable test suite using TestNode and graph.execute().
 
 import {
   Graph,
   AdaptiveNode,
+  TestNode,
   OscillatorNode,
   createProcessor,
-  createRouterNode,
   createLoadBalancerNode,
-  createAddNode,
   createFloat32MultiplyNode,
-  createParallelNode,
+  testGraph,
 } from "./core";
+import { strict as assert } from "assert";
 
 // ============================================================================
-// 1. Audio Processing Demo
+// Test Runner
 // ============================================================================
 
-async function audioProcessingDemo() {
-  console.log("=== Audio Processing Demo ===");
-  // Envelope generator
-  const envelope = createProcessor<number, number>((time) => {
-    // Simple ADSR envelope
-    if (time < 0.1) return time / 0.1; // Attack
-    if (time < 0.2) return 1; // Decay to sustain
-    if (time < 0.8) return 0.7; // Sustain
-    return 0.7 * (1 - (time - 0.8) / 0.2); // Release
-  }, "envelope");
+const tests: { [key: string]: () => Promise<void> } = {};
 
-  // Filter node
-  const filter = new AdaptiveNode<Float32Array, Float32Array>((samples) => {
-    // Simple low-pass filter
-    const filtered = new Float32Array(samples.length);
-    filtered[0] = samples[0];
+async function runAllTests() {
+  let pass = 0;
+  let fail = 0;
 
-    for (let i = 1; i < samples.length; i++) {
-      filtered[i] = filtered[i - 1] * 0.9 + samples[i] * 0.1;
+  for (const testName in tests) {
+    try {
+      await tests[testName]();
+      console.log(`✓ ${testName}`);
+      pass++;
+    } catch (error) {
+      console.error(`✗ ${testName}`);
+      console.error(error);
+      fail++;
     }
-
-    return filtered;
-  }).setName("lowpass");
-
-  // Build synthesizer graph
-  const graph = new Graph();
-  const osc = new OscillatorNode();
-  const gain = createProcessor<[Float32Array, number], Float32Array>(
-    ([samples, gainValue]) => samples.map((s) => s * gainValue),
-    "gain"
-  );
-
-  graph.addNode(osc);
-  graph.addNode(envelope);
-  graph.addNode(filter);
-  graph.addNode(gain);
-
-  // Generate 1 second of audio
-  const params = {
-    frequency: 440,
-    amplitude: 0.5,
-    sampleRate: 44100,
-    length: 44100,
-    waveform: "sawtooth" as const,
-  };
-
-  const oscResult = await osc.process(params);
-  if (!oscResult) {
-    console.error("Audio processing failed: Oscillator did not produce output.");
-    return;
   }
-  const filtered = await filter.process(oscResult.samples);
 
-  // Apply envelope
-  const envelopeValues = await Promise.all(
-    Array.from({ length: 44100 }, (_, i) => envelope.process(i / 44100))
-  );
-  const output = filtered?.map((sample, i) => sample * (envelopeValues[i] ?? 0));
-  console.log("Audio processing demo complete.");
+  console.log(`\nTests complete: ${pass} passed, ${fail} failed.`);
+  if (fail > 0) {
+    process.exit(1); // Exit with error code if any test fails
+  }
 }
 
 // ============================================================================
-// 2. Basic Math Demo
+// 1. Basic Math Test
 // ============================================================================
 
-async function basicMathDemo() {
-  console.log("\n=== Basic Math Demo ===");
+tests["Basic Math Graph"] = async () => {
   const graph = new Graph();
 
   // Create nodes
-  const input = createProcessor<number, number>((x) => x, "input");
+  const input = new TestNode<number>().setName("input");
   const add5 = createProcessor<number, number>((x) => x + 5, "add5");
   const multiply2 = createProcessor<number, number>((x) => x * 2, "multiply2");
-  const output = createProcessor<number, void>(
-    (x) => console.log("Result:", x),
-    "output"
-  );
+  const output = new TestNode<number>().setName("output");
 
   // Build graph: (input + 5) * 2
   graph.addNode(input).addNode(add5).addNode(multiply2).addNode(output);
@@ -102,748 +62,284 @@ async function basicMathDemo() {
   graph.connect(add5, multiply2);
   graph.connect(multiply2, output);
 
-  // Execute
-  await graph.execute(10); // Result: 30
-}
+  // Execute and assert
+  await graph.execute(10, input.id);
+
+  output.assertReceived([30]);
+  output.assertNoErrors();
+};
 
 // ============================================================================
-// 3. Conditional Routing Demo
+// 2. Conditional Routing Test
 // ============================================================================
 
-async function conditionalRoutingDemo() {
-  console.log("\n=== Conditional Routing Demo ===");
+tests["Conditional Routing"] = async () => {
   const graph = new Graph();
 
-  // Temperature monitoring system
-  const tempSensor = createProcessor(() => Math.random() * 50, "temp-sensor");
-  const threshold = createProcessor<number, boolean>(
-    (temp) => temp > 30,
-    "threshold"
-  );
-  const alert = createProcessor<number, void>(
-    (temp) => console.log(`🔥 HIGH TEMP: ${temp}°C`),
-    "alert"
-  );
-  const normal = createProcessor<number, void>(
-    (temp) => console.log(`✓ Normal: ${temp}°C`),
-    "normal"
-  );
+  // Nodes
+  const tempSensor = createProcessor(() => 42, "temp-sensor"); // Fixed temp for predictability
+  const alertNode = new TestNode<number>().setName("alert");
+  const normalNode = new TestNode<number>().setName("normal");
 
-  // Create conditional routing
-  const router = createProcessor<[boolean, number], void>(([isHigh, temp]) => {
-    if (isHigh) {
-      alert.process(temp);
+  // Custom router node to direct traffic
+  const router = new AdaptiveNode<number, void>((temp) => {
+    if (temp > 30) {
+      alertNode.process(temp);
     } else {
-      normal.process(temp);
+      normalNode.process(temp);
     }
-  }, "router");
+  }).setName("router");
 
-  graph
-    .addNode(tempSensor)
-    .addNode(threshold)
-    .addNode(router)
-    .addNode(alert)
-    .addNode(normal);
+  graph.addNode(tempSensor).addNode(router).addNode(alertNode).addNode(normalNode);
+  graph.connect(tempSensor, router);
 
-  // Connect: sensor -> threshold check -> router
-  const sensorOutput = await tempSensor.process(null);
-  if (sensorOutput !== null) {
-    const isHigh = await threshold.process(sensorOutput);
-    if (isHigh !== null) {
-      await router.process([isHigh, sensorOutput]);
-    }
-  }
-}
+  // Test high temperature
+  await graph.execute(null, tempSensor.id);
+  alertNode.assertReceived([42]);
+  normalNode.assertReceived([]);
+  alertNode.assertNoErrors();
+
+  // Test normal temperature
+  alertNode.reset();
+  normalNode.reset();
+  tempSensor.setInitialValue(25); // Change sensor value
+  await graph.execute(null, tempSensor.id);
+  alertNode.assertReceived([]);
+  normalNode.assertReceived([25]);
+  normalNode.assertNoErrors();
+};
 
 // ============================================================================
-// 4. Dynamic Graph Demo
+// 3. Error Handling Test
 // ============================================================================
 
-function dynamicGraphDemo() {
-  console.log("\n=== Dynamic Graph Demo ===");
-  console.log("Dynamic graph demo is conceptual and commented out.");
-  // Add nodes dynamically based on conditions
-  // if (needsCaching) {
-  //     const cache = createCacheNode(5000);
-  //     graph.addNode(cache);
-  //     graph.connect(dataSource, cache);
-  //     graph.connect(cache, processor);
-  //   } else {
-  //     graph.connect(dataSource, processor);
-  //   }
-}
-
-// ============================================================================
-// 5. Error Handling Demo
-// ============================================================================
-
-async function errorHandlingDemo() {
-  console.log("\n=== Error Handling Demo ===");
-  // Define a recursive type for processable data
-  type Processable =
-    | string
-    | number
-    | Processable[]
-    | { [key: string]: Processable };
-
-  // Define the processData function with proper return type
-  const processData = (data: Processable | null | undefined): Processable => {
-    // Example processing logic
-    if (typeof data === "number") {
-      return data * 2;
-    } else if (typeof data === "string") {
-      return data.toUpperCase();
-    } else if (Array.isArray(data)) {
-      // Recursively process each item in the array
-      return data.map(processData);
-    } else if (data === null || data === undefined) {
-      throw new Error("Cannot process null or undefined data");
-    } else if (typeof data === "object") {
-      // Recursively process each value in the object
-      return Object.fromEntries(
-        Object.entries(data).map(([key, value]) => [
-          key,
-          processData(value as Processable),
-        ])
-      );
-    }
-    // Handle unsupported data types
-    throw new Error(`Unsupported data type: ${typeof data}`);
-  };
-
-  // Define the result type, which can be processed data or an error object
-  type ProcessResult = Processable | { error: string; input: any };
-
-  const safeProcessor = createProcessor<Processable | null, ProcessResult>(
-    (input) => {
-      try {
-        // Processing logic
-        return processData(input);
-      } catch (error: unknown) {
-        console.error("Processing failed:", error);
-        // Handle the unknown error type
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        return { error: errorMessage, input };
-      }
-    },
-    "safe-processor"
-  );
-
-  console.log('Processing { a: "hello", b: [1, 2] }');
-  const result1 = await safeProcessor.process({ a: "hello", b: [1, 2] });
-  console.log("Result:", result1);
-
-  console.log("Processing null");
-  const result2 = await safeProcessor.process(null);
-  console.log("Result:", result2);
-}
-
-// ============================================================================
-// 6. Machine Learning Demo
-// ============================================================================
-
-async function machineLearningDemo() {
-  console.log("\n=== Machine Learning Demo ===");
-  // ML Pipeline nodes
-  class DataPreprocessor extends AdaptiveNode<any, Float32Array> {
-    constructor() {
-      super((data) => new Float32Array(data));
-
-      this.register(Array, this.preprocessArray.bind(this));
-      this.register(Float32Array, this.preprocessFloat32.bind(this));
-    }
-
-    private preprocessArray(data: number[]): Float32Array {
-      // Normalize array data
-      const arr = new Float32Array(data);
-      const mean = arr.reduce((a, b) => a + b) / arr.length;
-      const std = Math.sqrt(
-        arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length
-      );
-
-      return arr.map((val) => (val - mean) / std);
-    }
-
-    private preprocessFloat32(data: Float32Array): Float32Array {
-      return this.preprocessArray(Array.from(data));
-    }
-  }
-
-  // Feature extractor
-  const featureExtractor = createProcessor<Float32Array, Float32Array>(
-    (data) => {
-      // Extract statistical features
-      const features = new Float32Array(5);
-
-      features[0] = Math.min(...data);
-      features[1] = Math.max(...data);
-      features[2] = data.reduce((a, b) => a + b) / data.length;
-      features[3] = Math.sqrt(
-        data.reduce((sum, val) => sum + val * val, 0) / data.length
-      );
-      features[4] = data.reduce(
-        (sum, val, i) => (i > 0 ? sum + Math.abs(val - data[i - 1]) : sum),
-        0
-      );
-
-      return features;
-    },
-    "feature-extractor"
-  );
-
-  // Mock ML model
-  const model = createProcessor<
-    Float32Array,
-    { class: string; confidence: number }
-  >((features) => {
-    // Simulate model inference
-    const sum = features.reduce((a, b) => a + b);
-
-    if (sum > 10) {
-      return { class: "positive", confidence: 0.85 };
-    } else if (sum < -10) {
-      return { class: "negative", confidence: 0.9 };
-    } else {
-      return { class: "neutral", confidence: 0.75 };
-    }
-  }, "ml-model");
-
-  // Post-processor
-  const postProcessor = new AdaptiveNode<any, any>((prediction) => prediction)
-    .register(Object, (pred: any) => {
-      if (pred.confidence < 0.5) {
-        return { ...pred, class: "uncertain" };
-      }
-      return pred;
-    })
-    .setName("post-processor");
-
-  // Build ML pipeline
+tests["Error Handling with Recovery"] = async () => {
   const graph = new Graph();
-  const preprocessor = new DataPreprocessor().setName("preprocessor");
 
-  graph.addNode(preprocessor);
-  graph.addNode(featureExtractor);
-  graph.addNode(model);
-  graph.addNode(postProcessor);
+  const failingNode = new AdaptiveNode<any, any>(() => {
+    throw new Error("Processing failed");
+  }).setName("failingNode");
 
-  graph.connect(preprocessor, featureExtractor);
-  graph.connect(featureExtractor, model);
-  graph.connect(model, postProcessor);
+  const errorCapture = new TestNode<any>().setName("errorCapture");
+  graph.addNode(failingNode).addNode(errorCapture);
+  graph.connectError(failingNode, errorCapture);
 
-  // Test with different data types
-  const testData = [
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    new Float32Array([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]),
-    Array.from({ length: 100 }, () => Math.random() * 10 - 5),
-  ];
+  await graph.execute("test-input", failingNode.id);
 
-  for (const data of testData) {
-    const result = await graph.execute(data, preprocessor.id);
-    console.log("Prediction:", result);
-  }
-}
+  assert.equal(errorCapture.receivedInputs.length, 1, "Error should be captured");
+  const error = errorCapture.receivedInputs[0];
+  assert.equal(error.error.message, "Processing failed");
+  assert.equal(error.input, "test-input");
+  assert.equal(error.nodeId, failingNode.id);
+};
 
 // ============================================================================
-// 7. Multi-protocol Demo
+// 4. Machine Learning Pipeline Test
 // ============================================================================
 
-async function multiProtocolDemo() {
-  console.log("\n=== Multi-protocol Demo ===");
-  // Request/Response types
-  interface HTTPRequest {
-    method: string;
-    path: string;
-    headers: Record<string, string>;
-    body?: any;
-  }
-
-  interface WebSocketMessage {
-    type: "ws";
-    action: string;
-    payload: any;
-  }
-
-  interface GRPCRequest {
-    service: string;
-    method: string;
-    data: any;
-  }
-
-  // Multi-protocol gateway node
-  class APIGateway extends AdaptiveNode<any, any> {
-    private rateLimits = new Map<string, number[]>();
-    private cache = new Map<string, { data: any; expires: number }>();
-
-    constructor() {
-      super((request) => ({ error: "Unknown protocol" }));
-
-      this.register(Object, this.routeByShape.bind(this));
-    }
-
-    private routeByShape(request: any) {
-      // HTTP Request
-      if ("method" in request && "path" in request) {
-        return this.handleHTTP(request as HTTPRequest);
-      }
-
-      // WebSocket Message
-      if (request.type === "ws" && "action" in request) {
-        return this.handleWebSocket(request as WebSocketMessage);
-      }
-
-      // gRPC Request
-      if ("service" in request && "method" in request) {
-        return this.handleGRPC(request as GRPCRequest);
-      }
-
-      return { error: "Unrecognized request format" };
-    }
-
-    private handleHTTP(request: HTTPRequest) {
-      // Check rate limits
-      const clientId = request.headers["x-client-id"] || "anonymous";
-      if (!this.checkRateLimit(clientId)) {
-        return { status: 429, error: "Rate limit exceeded" };
-      }
-
-      // Check cache
-      const cacheKey = `${request.method}:${request.path}`;
-      const cached = this.cache.get(cacheKey);
-      if (cached && cached.expires > Date.now()) {
-        return { status: 200, data: cached.data, cached: true };
-      }
-
-      // Route to appropriate service
-      const response = this.routeHTTPRequest(request);
-
-      // Cache successful GET requests
-      if (request.method === "GET" && response.status === 200) {
-        this.cache.set(cacheKey, {
-          data: response.data,
-          expires: Date.now() + 60000, // 1 minute
-        });
-      }
-
-      return response;
-    }
-
-    private handleWebSocket(message: WebSocketMessage) {
-      // Real-time message handling
-      switch (message.action) {
-        case "subscribe":
-          return { type: "subscription", channel: message.payload.channel };
-        case "publish":
-          return { type: "broadcast", sent: true };
-        default:
-          return { type: "error", message: "Unknown action" };
-      }
-    }
-
-    private handleGRPC(request: GRPCRequest) {
-      // gRPC routing
-      return {
-        service: request.service,
-        method: request.method,
-        response: `Processed ${request.service}.${request.method}`,
-      };
-    }
-
-    private checkRateLimit(clientId: string): boolean {
-      const now = Date.now();
-      const window = 60000; // 1 minute
-      const limit = 100; // requests per minute
-
-      if (!this.rateLimits.has(clientId)) {
-        this.rateLimits.set(clientId, []);
-      }
-
-      const requests = this.rateLimits.get(clientId)!;
-      const recentRequests = requests.filter((time) => now - time < window);
-
-      if (recentRequests.length >= limit) {
-        return false;
-      }
-
-      recentRequests.push(now);
-      this.rateLimits.set(clientId, recentRequests);
-      return true;
-    }
-
-    private routeHTTPRequest(request: HTTPRequest) {
-      // Simplified routing logic
-      if (request.path.startsWith("/api/users")) {
-        return { status: 200, data: { users: [] } };
-      }
-      if (request.path.startsWith("/api/products")) {
-        return { status: 200, data: { products: [] } };
-      }
-      return { status: 404, error: "Not found" };
-    }
-  }
-
-  // Service-specific processors
-  const authService = createProcessor<any, any>((request) => {
-    // Authentication logic
-    return { ...request, authenticated: true };
-  }, "auth-service");
-
-  const loggingService = createProcessor<any, any>((request) => {
-    console.log(`[${new Date().toISOString()}] Request:`, request);
-    return request;
-  }, "logging-service");
-
-  const analyticsService = new AdaptiveNode<any, any>((event) => {
-    // Track metrics
-    return event;
-  })
-    .register(Object, (event: any) => {
-      if (event.status >= 400) {
-        console.log("Error event:", event);
-      }
-      return event;
-    })
-    .setName("analytics");
-
-  // Build the API gateway graph
+tests["Machine Learning Pipeline"] = async () => {
   const graph = new Graph();
-  const gateway = new APIGateway().setName("api-gateway");
 
-  graph.addNode(loggingService);
-  graph.addNode(authService);
-  graph.addNode(gateway);
-  graph.addNode(analyticsService);
+  // Simplified ML nodes for testing
+  const preprocessor = new AdaptiveNode<number[], Float32Array>((data) => new Float32Array(data))
+    .setName("preprocessor");
+  
+  const model = new AdaptiveNode<Float32Array, string>((features) =>
+    features.reduce((a, b) => a + b, 0) > 10 ? "positive" : "negative"
+  ).setName("model");
 
-  graph.connect(loggingService, authService);
-  graph.connect(authService, gateway);
-  graph.connect(gateway, analyticsService);
+  const output = new TestNode<string>().setName("output");
 
-  // Test different protocols
-  const requests = [
-    // HTTP Request
-    {
-      method: "GET",
-      path: "/api/users/123",
-      headers: { "x-client-id": "client-1" },
-    },
-    // WebSocket Message
-    {
-      type: "ws",
-      action: "subscribe",
-      payload: { channel: "updates" },
-    },
-    // gRPC Request
-    {
-      service: "UserService",
-      method: "GetUser",
-      data: { userId: 123 },
-    },
-  ];
+  graph.addNode(preprocessor).addNode(model).addNode(output);
+  graph.connect(preprocessor, model);
+  graph.connect(model, output);
 
-  for (const request of requests) {
-    const result = await graph.execute(request, loggingService.id);
-    console.log("Result:", result);
-  }
-}
+  // Test positive case
+  await graph.execute([5, 6], preprocessor.id);
+  output.assertReceived(["positive"]);
+
+  // Test negative case
+  output.reset();
+  await graph.execute([1, 2], preprocessor.id);
+  output.assertReceived(["negative"]);
+  output.assertNoErrors();
+};
 
 // ============================================================================
-// 8. Oscillator Demo
+// 5. Multi-protocol Gateway Test
 // ============================================================================
 
-async function oscillatorDemo() {
-  console.log("\n=== Oscillator Demo ===");
+tests["Multi-protocol Gateway"] = async () => {
+  const graph = new Graph();
+
+  // Simplified gateway
+  const gateway = new AdaptiveNode<any, any>((req) => ({ status: 400, error: "Bad format" }))
+    .register(
+      (req): req is { method: string } => "method" in req,
+      (req) => ({ status: 200, data: `HTTP ${req.method}` })
+    )
+    .register(
+      (req): req is { type: "ws" } => req.type === "ws",
+      (req) => ({ status: "ok", data: "WebSocket" })
+    )
+    .setName("gateway");
+
+  const output = new TestNode<any>().setName("output");
+  graph.addNode(gateway).addNode(output);
+  graph.connect(gateway, output);
+
+  // Test HTTP
+  await graph.execute({ method: "GET" }, gateway.id);
+  output.assertReceived([{ status: 200, data: "HTTP GET" }]);
+
+  // Test WebSocket
+  output.reset();
+  await graph.execute({ type: "ws" }, gateway.id);
+  output.assertReceived([{ status: "ok", data: "WebSocket" }]);
+  output.assertNoErrors();
+};
+
+// ============================================================================
+// 6. Oscillator and Audio Chain Test
+// ============================================================================
+
+tests["Oscillator Audio Chain"] = async () => {
   const graph = new Graph();
 
   const osc = new OscillatorNode();
-  const multiply = createFloat32MultiplyNode();
+  const multiply = createFloat32MultiplyNode(); // Multiplies by 0.5
   const extractor = createProcessor<{ samples: Float32Array; nextPhase: number }, Float32Array>(
     (data) => data.samples,
     "extractor"
   );
+  const output = new TestNode<Float32Array>().setName("output");
 
-  graph.addNode(osc);
-  graph.addNode(extractor);
-  graph.addNode(multiply);
+  graph.addNode(osc).addNode(extractor).addNode(multiply).addNode(output);
   graph.connect(osc, extractor);
   graph.connect(extractor, multiply);
+  graph.connect(multiply, output);
 
-  const result = await graph.execute({
+  const params = {
     frequency: 440,
-    amplitude: 0.5,
+    amplitude: 1.0, // Use 1.0 for easier assertion
     sampleRate: 44100,
-  });
-  console.log("Oscillator result:", result);
-}
+    length: 4,
+    waveform: "sine" as const,
+  };
+
+  await graph.execute(params, osc.id);
+
+  assert.equal(output.receivedInputs.length, 1, "Should receive one output");
+  const result = output.receivedInputs[0];
+  assert(result instanceof Float32Array, "Output should be Float32Array");
+  assert.equal(result.length, 4, "Output length should be correct");
+  // Check if values are multiplied by 0.5
+  assert(result.every(val => Math.abs(val) <= 0.5), "Values should be scaled down");
+  output.assertNoErrors();
+};
 
 // ============================================================================
-// 9. Performance Monitoring Demo
+// 7. Real-time Stream Load Balancer Test
 // ============================================================================
 
-async function performanceMonitoringDemo() {
-  console.log("\n=== Performance Monitoring Demo ===");
-  // Define the missing function
-  function expensiveOperation(input: any): any {
-    // Simulate an expensive operation
-    // This could be a complex calculation, data processing, etc.
-    const iterations = input?.iterations || 1000000;
-    let result = 0;
-
-    for (let i = 0; i < iterations; i++) {
-      result += Math.sin(i) * Math.cos(i);
-    }
-
-    return result;
-  }
-
-  const monitoredNode = new AdaptiveNode<any, any>((input) => {
-    const start = performance.now();
-    const result = expensiveOperation(input);
-    const duration = performance.now() - start;
-
-    if (duration > 100) {
-      console.warn(`Slow operation: ${duration}ms`);
-    }
-
-    return result;
-  }).setName("monitored");
-
-  await monitoredNode.process({ iterations: 2000000 });
-
-  // Check performance stats
-  const stats = monitoredNode.getPerformanceStats();
-  console.log("Performance stats:", stats);
-}
-
-// ============================================================================
-// 10. Real-time Stream Demo
-// ============================================================================
-
-async function realtimeStreamDemo() {
-  console.log("\n=== Real-time Stream Demo ===");
-  // Stream processor that handles different event types
-  class StreamProcessor extends AdaptiveNode<any, any> {
-    private buffer: any[] = [];
-    private windowSize = 100;
-
-    constructor() {
-      super((event) => event);
-
-      // Register processors for different event types
-      if (typeof MouseEvent !== "undefined") {
-        this.register(MouseEvent, this.processMouseEvent.bind(this));
-      }
-      if (typeof KeyboardEvent !== "undefined") {
-        this.register(KeyboardEvent, this.processKeyboardEvent.bind(this));
-      }
-      this.register(Object, this.processDataEvent.bind(this));
-    }
-
-    private processMouseEvent(event: MouseEvent) {
-      return {
-        type: "mouse",
-        x: event.clientX,
-        y: event.clientY,
-        timestamp: Date.now(),
-      };
-    }
-
-    private processKeyboardEvent(event: KeyboardEvent) {
-      return {
-        type: "keyboard",
-        key: event.key,
-        timestamp: Date.now(),
-      };
-    }
-
-    private processDataEvent(event: any) {
-      this.buffer.push(event);
-      if (this.buffer.length > this.windowSize) {
-        this.buffer.shift();
-      }
-
-      // Compute sliding window statistics
-      return {
-        type: "data",
-        count: this.buffer.length,
-        average: this.computeAverage(),
-        timestamp: Date.now(),
-      };
-    }
-
-    private computeAverage(): number {
-      if (this.buffer.length === 0) return 0;
-      const sum = this.buffer.reduce((acc, val) => acc + (val.value || 0), 0);
-      return sum / this.buffer.length;
-    }
-  }
-
-  // Create multiple workers for parallel processing
-  const workers = Array.from({ length: 4 }, (_, i) =>
-    new StreamProcessor().setName(`worker-${i}`)
-  );
-
-  // Load balancer distributes events across workers
-  const loadBalancer = createLoadBalancerNode(workers);
-
-  // Aggregator collects results from all workers
-  const aggregator = createProcessor<any, void>((result) => {
-    console.log(`Processed event:`, result);
-  }, "aggregator");
-
-  // Build the graph
+tests["Real-time Stream Load Balancer"] = async () => {
   const graph = new Graph();
-  graph.addNode(loadBalancer);
-  workers.forEach((w) => graph.addNode(w));
-  graph.addNode(aggregator);
 
-  // Connect load balancer to all workers and workers to aggregator
-  workers.forEach((worker) => {
-    graph.connect(loadBalancer, worker);
-    graph.connect(worker, aggregator);
-  });
+  const worker1 = new TestNode<any>().setName("worker1");
+  const worker2 = new TestNode<any>().setName("worker2");
+  const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
+  
+  graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
+  graph.connect(loadBalancer, worker1);
+  graph.connect(loadBalancer, worker2);
 
-  // Simulate event stream
-  const events = [];
-  if (typeof MouseEvent !== "undefined") {
-    events.push(new MouseEvent("click", { clientX: 100, clientY: 200 }));
-  }
-  events.push({ value: 42 });
-  if (typeof KeyboardEvent !== "undefined") {
-    events.push(new KeyboardEvent("keydown", { key: "Enter" }));
-  }
-  events.push({ value: 38 }, { value: 45 });
+  // The load balancer itself is the entry point
+  loadBalancer.setInitialValue({ data: 1 });
+  await graph.execute(null, loadBalancer.id);
+  loadBalancer.setInitialValue({ data: 2 });
+  await graph.execute(null, loadBalancer.id);
+  loadBalancer.setInitialValue({ data: 3 });
+  await graph.execute(null, loadBalancer.id);
+  loadBalancer.setInitialValue({ data: 4 });
+  await graph.execute(null, loadBalancer.id);
 
-  for (const event of events) {
-    await loadBalancer.process(event);
-  }
-}
+  worker1.assertReceived([{ data: 1 }, { data: 3 }]);
+  worker2.assertReceived([{ data: 2 }, { data: 4 }]);
+  worker1.assertNoErrors();
+  worker2.assertNoErrors();
+};
 
 // ============================================================================
-// 11. Transformation Pipeline Demo
+// 8. Transformation Pipeline Test
 // ============================================================================
 
-async function transformationPipelineDemo() {
-  console.log("\n=== Transformation Pipeline Demo ===");
-  interface User {
-    id: number;
-    name: string;
-    email: string;
-    age: number;
-  }
+tests["Transformation Pipeline"] = async () => {
+  interface User { id: number; name: string; email: string; age: number; }
+  interface EnrichedUser extends User { category: string; }
 
-  // Validation node
   const validator = createProcessor<User, User>((user) => {
-    if (!user.email.includes("@")) {
-      throw new Error("Invalid email");
-    }
-    if (user.age < 0 || user.age > 150) {
-      throw new Error("Invalid age");
-    }
+    if (!user.email.includes("@")) throw new Error("Invalid email");
     return user;
   }, "validator");
 
-  // Enrichment node
-  const enricher = createProcessor<User, User & { category: string }>(
-    (user) => ({
-      ...user,
-      category: user.age < 18 ? "minor" : user.age < 65 ? "adult" : "senior",
-    }),
+  const enricher = createProcessor<User, EnrichedUser>(
+    (user) => ({ ...user, category: user.age < 18 ? "minor" : "adult" }),
     "enricher"
   );
 
-  // Privacy filter
-  const privacyFilter = new AdaptiveNode<any, any>((data) => data)
-    .register(Object, (obj: any) => {
-      const filtered = { ...obj };
-      if ("email" in filtered) {
-        filtered.email = filtered.email.replace(/(.{2}).*(@.*)/, "$1***$2");
-      }
-      return filtered;
-    })
-    .setName("privacy-filter");
+  const privacyFilter = createProcessor<EnrichedUser, Partial<EnrichedUser>>(
+    (user) => ({ id: user.id, age: user.age, category: user.category }),
+    "privacyFilter"
+  );
 
-  // Build pipeline
-  const graph = new Graph();
-  graph.addNode(validator);
-  graph.addNode(enricher);
-  graph.addNode(privacyFilter);
-
+  const graph = new Graph()
+    .addNode(validator)
+    .addNode(enricher)
+    .addNode(privacyFilter);
+  
   graph.connect(validator, enricher);
   graph.connect(enricher, privacyFilter);
 
-  // Process user data
-  const userData: User = {
-    id: 1,
-    name: "John Doe",
-    email: "john.doe@example.com",
-    age: 25,
-  };
-
-  const result = await graph.execute(userData, validator.id);
-  console.log(result);
-}
+  await testGraph(
+    graph,
+    { id: 1, name: "Test", email: "test@test.com", age: 25 },
+    { id: 1, age: 25, category: "adult" },
+    validator.id
+  );
+};
 
 // ============================================================================
-// 12. Type Adaptive Demo
+// 9. Type Adaptive Node Test
 // ============================================================================
 
-async function typeAdaptiveDemo() {
-  console.log("\n=== Type Adaptive Demo ===");
-  // Node that handles different data types
-  const smartProcessor = new AdaptiveNode<any, string>(
-    (input) => `Unknown type: ${typeof input}`
-  )
-    .register(Number, (num) => `Number: ${num.toFixed(2)}`)
-    .register(String, (str) => `String: "${str.toUpperCase()}"`)
-    .register(Array, (arr) => `Array[${arr.length}]: ${arr.join(", ")}`)
-    .register(Date, (date) => `Date: ${date.toISOString()}`)
+tests["Type Adaptive Node"] = async () => {
+  const smartProcessor = new AdaptiveNode<any, string>((input) => `Unknown: ${typeof input}`)
+    .register((input): input is number => typeof input === 'number', (num) => `Number: ${num}`)
+    .register((input): input is string => typeof input === 'string', (str) => `String: ${str}`)
     .setName("smart-processor");
 
-  const logger = createProcessor<string, void>(
-    (msg) => console.log(msg),
-    "logger"
-  );
-
+  const output = new TestNode<string>().setName("output");
   const graph = new Graph();
   graph.addNode(smartProcessor);
-  graph.addNode(logger);
-  graph.connect(smartProcessor, logger);
+  graph.addNode(output);
+  graph.connect(smartProcessor, output);
 
-  // Test with different types
-  await smartProcessor.process(42);
-  await smartProcessor.process("hello");
-  await smartProcessor.process([1, 2, 3]);
-  await smartProcessor.process(new Date());
-}
+  await graph.execute(123, smartProcessor.id);
+  output.assertReceived(["Number: 123"]);
+
+  output.reset();
+  await graph.execute("hello", smartProcessor.id);
+  output.assertReceived(["String: hello"]);
+  
+  output.assertNoErrors();
+};
+
 
 // ============================================================================
-// Run all demos
+// Run all tests
 // ============================================================================
 
-async function runAllDemos() {
-  try {
-    await audioProcessingDemo();
-    await basicMathDemo();
-    await conditionalRoutingDemo();
-    dynamicGraphDemo();
-    await errorHandlingDemo();
-    await machineLearningDemo();
-    await multiProtocolDemo();
-    await oscillatorDemo();
-    await performanceMonitoringDemo();
-    await realtimeStreamDemo();
-    await transformationPipelineDemo();
-    await typeAdaptiveDemo();
-
-    console.log("\n=== All demos completed successfully! ===");
-  } catch (error) {
-    console.error("Demo error:", error);
-  }
-}
-
-// Export for use in other modules
-export { runAllDemos };
-
-// Run the demos when this file is executed directly
-runAllDemos().catch(console.error);
+runAllTests().catch(err => {
+  console.error("Unhandled error during test execution:", err);
+  process.exit(1);
+});

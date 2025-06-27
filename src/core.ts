@@ -540,7 +540,10 @@ export class Graph {
       const startNode = this.nodes.get(startNodeId);
       if (!startNode) throw new Error(`Start node ${startNodeId} not found`);
       const nodeInput = input instanceof Map ? input.get(startNodeId) : input;
-      return processNode(startNode, nodeInput);
+      await processNode(startNode, nodeInput);
+      // After execution, return the result from the last node in the execution order
+      const lastNode = executionOrder[executionOrder.length - 1];
+      return lastNode?.getLastResult();
     }
 
     // Find entry nodes: nodes with no incoming data connections OR nodes with an initial value.
@@ -956,10 +959,36 @@ export const createGateNode = () =>
     pass ? data : null
   ).setName("gate");
 
-export const createMergeNode = () =>
-  new AdaptiveNode<any[], any[]>((inputs) =>
-    inputs.filter((x) => x !== null && x !== undefined)
-  ).setName("merge");
+export class MergeNode<T> extends AdaptiveNode<T, T[]> {
+  private receivedInputs: T[] = [];
+  private expectedInputs: number = 0;
+
+  constructor(expectedInputs: number) {
+    super(async (input: T) => {
+      this.receivedInputs.push(input);
+
+      if (this.receivedInputs.length >= this.expectedInputs) {
+        const result = [...this.receivedInputs];
+        this.receivedInputs = []; // Reset for next execution
+        return result;
+      }
+
+      return []; // Not all inputs received yet, return empty array
+    });
+    this.expectedInputs = expectedInputs;
+    this.setName("merge");
+  }
+
+  addSource(source: AdaptiveNode<any, T>): void {
+    // This method is a placeholder for a more robust implementation
+    // that would dynamically adjust expectedInputs or use a different
+    // mechanism to determine when to emit.
+  }
+}
+
+export const createMergeNode = <T>(expectedInputs: number = 2) => {
+  return new MergeNode<T>(expectedInputs);
+};
 
 export class SplitNode<T = any> extends AdaptiveNode<T, T> {
   private readonly dataOutletCount: number;
