@@ -815,7 +815,7 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   graph.connect(feedbackGate, feedbackProcessor);
   graph.connect(feedbackProcessor, feedbackDelay);
   graph.connect(feedbackDelay, feedback_Output);
-  graph.connect(feedbackDelay, feedbackGate, (n) => [n > 0, n]);
+  graph.connect(feedbackDelay, feedbackGate, (n) => [n > 1, n]);
   graph.connect(merger, finalProcessor);
   graph.connect(finalProcessor, finalOutput);
   await graph.execute(10, input.id);

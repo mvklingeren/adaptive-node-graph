@@ -148,7 +148,7 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   graph.connect(feedbackGate as AdaptiveNode<any, any>, feedbackProcessor as AdaptiveNode<any, number>);
   graph.connect(feedbackProcessor, feedbackDelay);
   graph.connect(feedbackDelay, feedback_Output);
-  graph.connect(feedbackDelay, feedbackGate as AdaptiveNode<any, any>, (n: number) => [n > 0, n] as any); // Cycle back to the gate
+  graph.connect(feedbackDelay, feedbackGate as AdaptiveNode<any, any>, (n: number) => [n > 1, n] as any); // Cycle back to the gate
 
   // Final path
   graph.connect(merger, finalProcessor as AdaptiveNode<any, any>);
