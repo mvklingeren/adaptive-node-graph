@@ -143,10 +143,10 @@ tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
     transfer: async (data: number) => debounceOutput.process(data),
   } as any);
 
-  await debounceNode.process(1);
-  await debounceNode.process(2);
+  debounceNode.process(1);
+  debounceNode.process(2);
   await new Promise((resolve) => setTimeout(resolve, 50));
-  await debounceNode.process(3); // This should be the one that resolves
+  debounceNode.process(3); // This should be the one that resolves
   await new Promise((resolve) => setTimeout(resolve, 110));
 
   debounceOutput.assertReceived([3]);

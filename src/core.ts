@@ -723,20 +723,37 @@ export const createThrottleNode = (ms: number) => {
 };
 
 export const createDebounceNode = (ms: number) => {
-  return new AdaptiveNode(
-    (() => {
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      return async (input: any) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        return new Promise((resolve) => {
-          timeoutId = setTimeout(() => {
-            resolve(input);
-            timeoutId = null;
-          }, ms);
-        });
-      };
-    })()
-  ).setName(`debounce(${ms}ms)`);
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastResolve: ((value: any) => void) | null = null;
+
+  const node = new AdaptiveNode(async (input: any) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (lastResolve) {
+      lastResolve(null); // Resolve previous promise to prevent hanging
+    }
+
+    return new Promise((resolve) => {
+      lastResolve = resolve;
+      timeoutId = setTimeout(() => {
+        resolve(input);
+        timeoutId = null;
+        lastResolve = null;
+      }, ms);
+    });
+  }).setName(`debounce(${ms}ms)`);
+
+  // Override destroy to clean up timer
+  const originalDestroy = node.destroy.bind(node);
+  node.destroy = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    originalDestroy();
+  };
+
+  return node;
 };
 
 // ============================================================================

@@ -500,20 +500,32 @@ var createThrottleNode = (ms) => {
   ).setName(`throttle(${ms}ms)`);
 };
 var createDebounceNode = (ms) => {
-  return new AdaptiveNode(
-    /* @__PURE__ */ (() => {
-      let timeoutId = null;
-      return async (input) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        return new Promise((resolve) => {
-          timeoutId = setTimeout(() => {
-            resolve(input);
-            timeoutId = null;
-          }, ms);
-        });
-      };
-    })()
-  ).setName(`debounce(${ms}ms)`);
+  let timeoutId = null;
+  let lastResolve = null;
+  const node = new AdaptiveNode(async (input) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (lastResolve) {
+      lastResolve(null);
+    }
+    return new Promise((resolve) => {
+      lastResolve = resolve;
+      timeoutId = setTimeout(() => {
+        resolve(input);
+        timeoutId = null;
+        lastResolve = null;
+      }, ms);
+    });
+  }).setName(`debounce(${ms}ms)`);
+  const originalDestroy = node.destroy.bind(node);
+  node.destroy = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    originalDestroy();
+  };
+  return node;
 };
 var createErrorRecoveryNode = (defaultValue, logger) => new AdaptiveNode((error) => {
   const log = logger || pino();
@@ -801,10 +813,10 @@ tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
     target: debounceOutput,
     transfer: async (data) => debounceOutput.process(data)
   });
-  await debounceNode.process(1);
-  await debounceNode.process(2);
+  debounceNode.process(1);
+  debounceNode.process(2);
   await new Promise((resolve) => setTimeout(resolve, 50));
-  await debounceNode.process(3);
+  debounceNode.process(3);
   await new Promise((resolve) => setTimeout(resolve, 110));
   debounceOutput.assertReceived([3]);
 };
