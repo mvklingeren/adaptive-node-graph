@@ -103,10 +103,11 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         connections: dataOutletConnections,
       },
       {
-        send: (error: NodeError, graph?: Graph, hooks?: ExecutionHooks) => {
-          errorOutletConnections.forEach((conn) => {
-            conn.transfer(error, graph, hooks);
-          });
+        send: async (error: NodeError, graph?: Graph, hooks?: ExecutionHooks) => {
+          const promises = errorOutletConnections.map((conn) =>
+            conn.transfer(error, graph, hooks)
+          );
+          await Promise.all(promises);
         },
         connections: errorOutletConnections,
       },

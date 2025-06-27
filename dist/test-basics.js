@@ -51,10 +51,11 @@ var AdaptiveNode = class {
         connections: dataOutletConnections
       },
       {
-        send: (error, graph, hooks) => {
-          errorOutletConnections.forEach((conn) => {
-            conn.transfer(error, graph, hooks);
-          });
+        send: async (error, graph, hooks) => {
+          const promises = errorOutletConnections.map(
+            (conn) => conn.transfer(error, graph, hooks)
+          );
+          await Promise.all(promises);
         },
         connections: errorOutletConnections
       }

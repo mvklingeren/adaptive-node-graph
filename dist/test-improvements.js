@@ -51,10 +51,11 @@ var AdaptiveNode = class {
         connections: dataOutletConnections
       },
       {
-        send: (error, graph, hooks) => {
-          errorOutletConnections.forEach((conn) => {
-            conn.transfer(error, graph, hooks);
-          });
+        send: async (error, graph, hooks) => {
+          const promises = errorOutletConnections.map(
+            (conn) => conn.transfer(error, graph, hooks)
+          );
+          await Promise.all(promises);
         },
         connections: errorOutletConnections
       }
@@ -750,7 +751,7 @@ tests["Error Handling and Recovery"] = async () => {
   graph.addNode(unreliableNode).addNode(errorCapture).addNode(recoveryNode).addNode(finalOutput);
   graph.connect(unreliableNode, finalOutput);
   graph.connectError(unreliableNode, errorCapture);
-  graph.connect(errorCapture, recoveryNode);
+  graph.connectError(unreliableNode, recoveryNode);
   graph.connect(recoveryNode, finalOutput);
   await graph.execute(3, unreliableNode.id);
   finalOutput.assertReceived([6]);

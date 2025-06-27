@@ -68,7 +68,7 @@ tests["Error Handling and Recovery"] = async () => {
 
   graph.connect(unreliableNode, finalOutput); // Main data path
   graph.connectError(unreliableNode, errorCapture);
-  graph.connect(errorCapture, recoveryNode);
+  graph.connectError(unreliableNode, recoveryNode);
   graph.connect(recoveryNode, finalOutput); // Recovered data path
 
   // Test success path
