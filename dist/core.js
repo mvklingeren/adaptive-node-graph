@@ -2,6 +2,7 @@ import {
   AdaptiveNode,
   Connection,
   Graph,
+  HandledNodeError,
   MergeNode,
   OscillatorNode,
   SplitNode,
@@ -30,11 +31,12 @@ import {
   createSubtractNode,
   createThrottleNode,
   testGraph
-} from "./chunks/chunk-HWGFHZAP.js";
+} from "./chunks/chunk-QQPSUJKE.js";
 export {
   AdaptiveNode,
   Connection,
   Graph,
+  HandledNodeError,
   MergeNode,
   OscillatorNode,
   SplitNode,

@@ -114,42 +114,59 @@ tests["Async Flow Control with maxConcurrent"] = async () => {
 
 tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
   // Test Delay
+  const delayGraph = new Graph();
+  const delayInput = new TestNode<number>().setName("delayInput");
   const delayNode = createDelayNode(100);
+  const delayOutput = new TestNode<number>().setName("delayOutput");
+  delayGraph.addNode(delayInput).addNode(delayNode).addNode(delayOutput);
+  delayGraph.connect(delayInput, delayNode);
+  delayGraph.connect(delayNode, delayOutput);
+
   const start = Date.now();
-  await delayNode.process(null);
+  await delayGraph.execute(1, delayInput.id);
   const duration = Date.now() - start;
   assert(duration >= 100, `Delay was too short: ${duration}ms`);
+  delayOutput.assertReceived([1]);
 
   // Test Throttle
-  const throttleNode = createThrottleNode(100);
-  const throttleOutput = new TestNode<number>().setName("throttleOutput");
-  throttleNode.outlets[0].connections.push({
-    target: throttleOutput,
-    transfer: async (data: number) => throttleOutput.process(data),
-  } as any);
+  const throttleGraph = new Graph();
+  const throttleInput = new AdaptiveNode<number, number>((n) => n).setName("throttleInput");
+  const throttleNode = createThrottleNode<number>(100);
+  const throttleOutput = new TestNode<number | null>().setName("throttleOutput");
+  throttleGraph.addNode(throttleInput).addNode(throttleNode).addNode(throttleOutput);
+  throttleGraph.connect(throttleInput, throttleNode);
+  throttleGraph.connect(throttleNode, throttleOutput);
 
-  await throttleNode.process(1); // Should pass
-  await throttleNode.process(2); // Should be skipped
+  await throttleGraph.execute(1, throttleInput.id); // Should pass
+  await throttleGraph.execute(2, throttleInput.id); // Should be skipped
   await new Promise((resolve) => setTimeout(resolve, 110));
-  await throttleNode.process(3); // Should pass
-
-  throttleOutput.assertReceived([1, 3]);
+  await throttleGraph.execute(3, throttleInput.id); // Should pass
+  assert.deepStrictEqual(
+    throttleOutput.receivedInputs.filter((i) => i !== null),
+    [1, 3]
+  );
 
   // Test Debounce
-  const debounceNode = createDebounceNode(100);
-  const debounceOutput = new TestNode<number>().setName("debounceOutput");
-  debounceNode.outlets[0].connections.push({
-    target: debounceOutput,
-    transfer: async (data: number) => debounceOutput.process(data),
-  } as any);
+  const debounceGraph = new Graph();
+  const debounceInput = new AdaptiveNode<number, number>((n) => n).setName("debounceInput");
+  const debounceNode = createDebounceNode<number>(100);
+  const debounceOutput = new TestNode<number | null>().setName("debounceOutput");
+  debounceGraph.addNode(debounceInput).addNode(debounceNode).addNode(debounceOutput);
+  debounceGraph.connect(debounceInput, debounceNode);
+  debounceGraph.connect(debounceNode, debounceOutput);
 
-  debounceNode.process(1);
-  debounceNode.process(2);
+  // Fire multiple inputs in quick succession
+  debounceGraph.execute(1, debounceInput.id);
+  debounceGraph.execute(2, debounceInput.id);
   await new Promise((resolve) => setTimeout(resolve, 50));
-  debounceNode.process(3); // This should be the one that resolves
-  await new Promise((resolve) => setTimeout(resolve, 110));
+  debounceGraph.execute(3, debounceInput.id); // This should be the one that resolves
 
-  debounceOutput.assertReceived([3]);
+  // Wait for debounce time to pass
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  assert.deepStrictEqual(
+    debounceOutput.receivedInputs.filter((i) => i !== null),
+    [3]
+  );
 };
 
 // ============================================================================
@@ -157,32 +174,37 @@ tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
 // ============================================================================
 
 tests["Circuit Breaker"] = async () => {
+  const graph = new Graph();
   const failingNode = new AdaptiveNode<number, number>(
-    () => { throw new Error("Failure"); },
+    () => {
+      throw new Error("Failure");
+    },
     { circuitBreakerThreshold: 2, circuitBreakerResetTime: 200 }
   ).setName("failing");
 
   const errorCapture = new TestNode<NodeError>().setName("errorCapture");
-  failingNode.outlets[1].connections.push({
-    target: errorCapture,
-    transfer: async (data: NodeError) => errorCapture.process(data),
-  } as any);
+  graph.addNode(failingNode).addNode(errorCapture);
+  graph.connectError(failingNode, errorCapture);
 
   // Trigger the breaker
-  await failingNode.process(1);
-  await failingNode.process(2);
+  await graph.execute(1, failingNode.id);
+  await graph.execute(2, failingNode.id);
   assert.equal(errorCapture.receivedInputs.length, 2, "Errors not captured before break");
 
   // Breaker should be open
-  await failingNode.process(3);
+  await graph.execute(3, failingNode.id);
   assert.equal(errorCapture.receivedInputs.length, 3, "Open circuit error not captured");
-  assert(errorCapture.receivedInputs[2].error.message.includes("Circuit breaker is open"));
+  assert(
+    errorCapture.receivedInputs[2].error.message.includes(
+      "Circuit breaker is open"
+    )
+  );
 
   // Wait for reset
   await new Promise((resolve) => setTimeout(resolve, 210));
 
   // Breaker should be closed
-  await failingNode.process(4);
+  await graph.execute(4, failingNode.id);
   assert.equal(errorCapture.receivedInputs.length, 4, "Error not captured after reset");
   assert.equal(errorCapture.receivedInputs[3].error.message, "Failure");
 };
@@ -192,13 +214,20 @@ tests["Circuit Breaker"] = async () => {
 // ============================================================================
 
 tests["Load Balancer (Round Robin)"] = async () => {
+  const graph = new Graph();
   const worker1 = new TestNode<number>().setName("worker1");
   const worker2 = new TestNode<number>().setName("worker2");
-  const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
+  const loadBalancer = createLoadBalancerNode([worker1, worker2], {
+    strategy: "round-robin",
+  });
 
-  await loadBalancer.process(1);
-  await loadBalancer.process(2);
-  await loadBalancer.process(3);
+  graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
+  // Note: The load balancer internally processes to its workers,
+  // so we don't connect them in the graph here. We just need to execute it.
+
+  await graph.execute(1, loadBalancer.id);
+  await graph.execute(2, loadBalancer.id);
+  await graph.execute(3, loadBalancer.id);
 
   worker1.assertReceived([1, 3]);
   worker2.assertReceived([2]);

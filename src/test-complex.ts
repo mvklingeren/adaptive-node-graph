@@ -111,13 +111,10 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   const feedbackProcessor = createProcessor<number, number>((n) => n - 1, "feedbackProcessor");
 
   // --- Merging and Final Processing ---
-  // 14. Main Merger
-  const merger = createMergeNode<number | string>(2);
-
-  // 15. Final Processor
+  const merger = createMergeNode<any>(2);
   const finalProcessor = createProcessor<any[], any>((arr) => arr.sort(), "finalProcessor");
 
-  // 16-21: Add all nodes to graph
+  // Add nodes to graph
   graph
     .addNode(input).addNode(splitter)
     .addNode(pathA_Cache).addNode(pathA_Add).addNode(pathA_Output)
@@ -125,36 +122,42 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
     .addNode(feedbackGate).addNode(feedbackDelay).addNode(feedbackProcessor).addNode(feedback_Output)
     .addNode(merger).addNode(finalProcessor).addNode(finalOutput)
     .addNode(errorOutput);
-  
+
   // --- Connections ---
+  // Create a transformer for the feedback loop to convert number to [boolean, number]
+  const feedbackTransformer = createProcessor<number, [boolean, number]>(
+    (n: number) => [n > 1, n],
+    "feedbackTransformer"
+  );
+  graph.addNode(feedbackTransformer);
+
   // Input to Splitter
   graph.connect(input, splitter);
 
   // Path A
-  graph.connect(splitter, pathA_Cache, undefined, 0, 0);
+  graph.connect(splitter, pathA_Cache, undefined, 0);
   graph.connect(pathA_Cache, pathA_Add);
   graph.connect(pathA_Add, pathA_Output);
-  graph.connect(pathA_Add, merger);
 
   // Path B
-  graph.connect(splitter, subGraphNode, undefined, 1, 0);
+  graph.connect(splitter, subGraphNode, undefined, 1);
   graph.connect(subGraphNode, loadBalancer);
   graph.connect(loadBalancer, pathB_Output);
-  graph.connect(loadBalancer, merger);
-  graph.connectError(loadBalancer, errorOutput); // Capture worker3 error
+  graph.connectError(loadBalancer, errorOutput);
 
   // Path C (Feedback Loop)
-  graph.connect(splitter, feedbackGate as AdaptiveNode<any, any>, undefined, 2, 0);
+  graph.connect(splitter, feedbackGate as AdaptiveNode<any, any>, undefined, 2);
   graph.connect(feedbackGate as AdaptiveNode<any, any>, feedbackProcessor as AdaptiveNode<any, number>);
   graph.connect(feedbackProcessor, feedbackDelay);
   graph.connect(feedbackDelay, feedback_Output);
-  graph.connect(feedbackDelay, feedbackGate as AdaptiveNode<any, any>, (n: number) => [n > 1, n] as any); // Cycle back to the gate
-
-  // Final path
-  graph.connect(merger, finalProcessor as AdaptiveNode<any, any>);
-  graph.connect(finalProcessor, finalOutput);
+  // The cycle is created by feeding the output of the delay back into the gate via a transformer node
+  graph.connect(feedbackDelay, feedbackTransformer);
+  graph.connect(feedbackTransformer, feedbackGate as AdaptiveNode<any, any>);
 
   // --- Execution and Assertions ---
+
+  // --- Test Path A & B (Linear Flow) ---
+  console.log("Testing linear paths A and B...");
   // Run 1: Should go to worker1
   await graph.execute(10, input.id);
   pathA_Output.assertReceived([25]); // (10 * 2) + 5
@@ -162,27 +165,70 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   assert.equal(pathA_ComputeCount, 1, "Path A should compute once");
 
   // Run 2: Should go to worker2 (and test cache)
+  pathA_Output.reset();
   pathB_Output.reset();
   await graph.execute(10, input.id);
-  pathB_Output.assertReceived(["w2:15"]); // subGraphNode passes 15, LB sends to w2
+  pathA_Output.assertReceived([25]); // Cached result
+  pathB_Output.assertReceived(["w2:15"]); // LB sends to w2
   assert.equal(pathA_ComputeCount, 1, "Path A cache was not used");
 
   // Run 3: Should go to worker3 and fail
   pathB_Output.reset();
-  await graph.execute(10, input.id);
+  await graph.execute(12, input.id); // Use a different value to avoid cache
   pathB_Output.assertReceived([]); // No output on failure
   assert.equal(errorOutput.receivedInputs.length, 1, "Worker error not caught");
+  assert.equal(errorOutput.receivedInputs[0].error.message, "Worker 3 fails");
+  assert.equal(pathA_ComputeCount, 2, "Path A should recompute for new value");
 
-  // Third run (with feedback loop)
-  feedbackGate.setInitialValue([true, 5]); // Open the gate with a new value
-  await graph.execute(null, feedbackGate.id);
+  // --- Test Merging ---
+  console.log("Testing merge node...");
+  const mergeGraph = new Graph();
+  const source1 = new TestNode<string>().setName("source1");
+  const source2 = new TestNode<number>().setName("source2");
+  const mergeNode = createMergeNode<string | number>(2);
+  const mergeOutput = new TestNode<any[]>().setName("mergeOutput");
+  mergeGraph.addNode(source1).addNode(source2).addNode(mergeNode).addNode(mergeOutput);
+  mergeGraph.connect(source1, mergeNode);
+  mergeGraph.connect(source2, mergeNode);
+  mergeGraph.connect(mergeNode, mergeOutput);
 
-  // Wait for feedback loop to run a few times
-  await new Promise(resolve => setTimeout(resolve, 500));
-  graph.stop(); // Stop the graph to prevent infinite loops
+  // Execute sources in parallel to trigger merge
+  await Promise.all([
+    mergeGraph.execute("hello", source1.id),
+    mergeGraph.execute(123, source2.id)
+  ]);
+  // The order is not guaranteed, so we check for content
+  assert.equal(mergeOutput.receivedInputs.length, 1);
+  assert.deepStrictEqual(mergeOutput.receivedInputs[0].sort(), ["hello", 123].sort());
 
-  feedback_Output.assertReceived([4, 3, 2, 1]); // 5 -> 4 -> 3 -> 2 -> 1
-  
+
+  // --- Test Feedback Loop ---
+  console.log("Testing feedback loop...");
+  const feedbackGraph = new Graph();
+  const feedbackInput = new AdaptiveNode<[boolean, number], any>(([pass, data]) => pass ? data : null).setName("feedbackInput");
+  const fbGate = createGateNode();
+  const fbProcessor = createProcessor<number, number>((n) => n - 1, "fbProcessor");
+  const fbDelay = createDelayNode(10); // shorter delay for faster test
+  const fbOutput = new TestNode<number>().setName("fbOutput");
+  const fbTransformer = createProcessor<number, [boolean, number]>(
+    (n: number) => [n > 1, n],
+    "fbTransformer"
+  );
+  feedbackGraph.addNode(feedbackInput).addNode(fbGate).addNode(fbProcessor).addNode(fbDelay).addNode(fbOutput).addNode(fbTransformer);
+
+  feedbackGraph.connect(feedbackInput, fbGate as AdaptiveNode<any, any>);
+  feedbackGraph.connect(fbGate as AdaptiveNode<any, any>, fbProcessor);
+  feedbackGraph.connect(fbProcessor, fbDelay);
+  feedbackGraph.connect(fbDelay, fbOutput);
+  feedbackGraph.connect(fbDelay, fbTransformer); // Cycle
+  feedbackGraph.connect(fbTransformer, fbGate as AdaptiveNode<any, any>);
+
+  await feedbackGraph.execute([true, 5], feedbackInput.id);
+  await new Promise(resolve => setTimeout(resolve, 100)); // Wait for loop
+  feedbackGraph.stop();
+
+  fbOutput.assertReceived([4, 3, 2, 1]);
+
   console.log("Complex graph executed successfully.");
 };
 

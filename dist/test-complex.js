@@ -11,7 +11,7 @@ import {
   createMergeNode,
   createProcessor,
   createSplitNode
-} from "./chunks/chunk-HWGFHZAP.js";
+} from "./chunks/chunk-QQPSUJKE.js";
 
 // src/test-complex.ts
 import { strict as assert } from "assert";
@@ -71,40 +71,80 @@ tests["Complex Graph with Cycles and Advanced Features"] = async () => {
   const merger = createMergeNode(2);
   const finalProcessor = createProcessor((arr) => arr.sort(), "finalProcessor");
   graph.addNode(input).addNode(splitter).addNode(pathA_Cache).addNode(pathA_Add).addNode(pathA_Output).addNode(subGraphNode).addNode(loadBalancer).addNode(pathB_Output).addNode(feedbackGate).addNode(feedbackDelay).addNode(feedbackProcessor).addNode(feedback_Output).addNode(merger).addNode(finalProcessor).addNode(finalOutput).addNode(errorOutput);
+  const feedbackTransformer = createProcessor(
+    (n) => [n > 1, n],
+    "feedbackTransformer"
+  );
+  graph.addNode(feedbackTransformer);
   graph.connect(input, splitter);
-  graph.connect(splitter, pathA_Cache, void 0, 0, 0);
+  graph.connect(splitter, pathA_Cache, void 0, 0);
   graph.connect(pathA_Cache, pathA_Add);
   graph.connect(pathA_Add, pathA_Output);
-  graph.connect(pathA_Add, merger);
-  graph.connect(splitter, subGraphNode, void 0, 1, 0);
+  graph.connect(splitter, subGraphNode, void 0, 1);
   graph.connect(subGraphNode, loadBalancer);
   graph.connect(loadBalancer, pathB_Output);
-  graph.connect(loadBalancer, merger);
   graph.connectError(loadBalancer, errorOutput);
-  graph.connect(splitter, feedbackGate, void 0, 2, 0);
+  graph.connect(splitter, feedbackGate, void 0, 2);
   graph.connect(feedbackGate, feedbackProcessor);
   graph.connect(feedbackProcessor, feedbackDelay);
   graph.connect(feedbackDelay, feedback_Output);
-  graph.connect(feedbackDelay, feedbackGate, (n) => [n > 1, n]);
-  graph.connect(merger, finalProcessor);
-  graph.connect(finalProcessor, finalOutput);
+  graph.connect(feedbackDelay, feedbackTransformer);
+  graph.connect(feedbackTransformer, feedbackGate);
+  console.log("Testing linear paths A and B...");
   await graph.execute(10, input.id);
   pathA_Output.assertReceived([25]);
   pathB_Output.assertReceived(["w1:15"]);
   assert.equal(pathA_ComputeCount, 1, "Path A should compute once");
+  pathA_Output.reset();
   pathB_Output.reset();
   await graph.execute(10, input.id);
+  pathA_Output.assertReceived([25]);
   pathB_Output.assertReceived(["w2:15"]);
   assert.equal(pathA_ComputeCount, 1, "Path A cache was not used");
   pathB_Output.reset();
-  await graph.execute(10, input.id);
+  await graph.execute(12, input.id);
   pathB_Output.assertReceived([]);
   assert.equal(errorOutput.receivedInputs.length, 1, "Worker error not caught");
-  feedbackGate.setInitialValue([true, 5]);
-  await graph.execute(null, feedbackGate.id);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  graph.stop();
-  feedback_Output.assertReceived([4, 3, 2, 1]);
+  assert.equal(errorOutput.receivedInputs[0].error.message, "Worker 3 fails");
+  assert.equal(pathA_ComputeCount, 2, "Path A should recompute for new value");
+  console.log("Testing merge node...");
+  const mergeGraph = new Graph();
+  const source1 = new TestNode().setName("source1");
+  const source2 = new TestNode().setName("source2");
+  const mergeNode = createMergeNode(2);
+  const mergeOutput = new TestNode().setName("mergeOutput");
+  mergeGraph.addNode(source1).addNode(source2).addNode(mergeNode).addNode(mergeOutput);
+  mergeGraph.connect(source1, mergeNode);
+  mergeGraph.connect(source2, mergeNode);
+  mergeGraph.connect(mergeNode, mergeOutput);
+  await Promise.all([
+    mergeGraph.execute("hello", source1.id),
+    mergeGraph.execute(123, source2.id)
+  ]);
+  assert.equal(mergeOutput.receivedInputs.length, 1);
+  assert.deepStrictEqual(mergeOutput.receivedInputs[0].sort(), ["hello", 123].sort());
+  console.log("Testing feedback loop...");
+  const feedbackGraph = new Graph();
+  const feedbackInput = new AdaptiveNode(([pass, data]) => pass ? data : null).setName("feedbackInput");
+  const fbGate = createGateNode();
+  const fbProcessor = createProcessor((n) => n - 1, "fbProcessor");
+  const fbDelay = createDelayNode(10);
+  const fbOutput = new TestNode().setName("fbOutput");
+  const fbTransformer = createProcessor(
+    (n) => [n > 1, n],
+    "fbTransformer"
+  );
+  feedbackGraph.addNode(feedbackInput).addNode(fbGate).addNode(fbProcessor).addNode(fbDelay).addNode(fbOutput).addNode(fbTransformer);
+  feedbackGraph.connect(feedbackInput, fbGate);
+  feedbackGraph.connect(fbGate, fbProcessor);
+  feedbackGraph.connect(fbProcessor, fbDelay);
+  feedbackGraph.connect(fbDelay, fbOutput);
+  feedbackGraph.connect(fbDelay, fbTransformer);
+  feedbackGraph.connect(fbTransformer, fbGate);
+  await feedbackGraph.execute([true, 5], feedbackInput.id);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  feedbackGraph.stop();
+  fbOutput.assertReceived([4, 3, 2, 1]);
   console.log("Complex graph executed successfully.");
 };
 runAllTests().catch((err) => {

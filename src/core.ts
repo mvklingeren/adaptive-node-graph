@@ -29,6 +29,17 @@ export interface NodeError {
   timestamp: number;
 }
 
+/**
+ * A special error type to indicate that a node has already handled and
+ * reported an error, preventing upstream handlers from reporting it again.
+ */
+export class HandledNodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HandledNodeError";
+  }
+}
+
 export interface ExecutionHooks {
   onNodeStart?: (nodeId: string) => void;
   onNodeComplete?: (nodeId: string, result: any) => void;
@@ -103,7 +114,11 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         connections: dataOutletConnections,
       },
       {
-        send: async (error: NodeError, graph?: Graph, hooks?: ExecutionHooks) => {
+        send: async (
+          error: NodeError,
+          graph?: Graph,
+          hooks?: ExecutionHooks
+        ) => {
           const promises = errorOutletConnections.map((conn) =>
             conn.transfer(error, graph, hooks)
           );
@@ -126,8 +141,16 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
     input: TInput,
     graph?: Graph,
     hooks?: ExecutionHooks
-  ): Promise<TOutput | null> {
-    if (graph?.isStopped) return null;
+  ): Promise<TOutput> {
+    if (graph?.isStopped) {
+      // Return a promise that resolves to a value that indicates no output,
+      // without being 'null' which can be ambiguous.
+      // Using a unique symbol could be an option if the type system allows.
+      // For now, we assume the processing is just stopped.
+      // The caller should ideally not proceed.
+      // A more robust implementation might involve a custom return type.
+      return null as unknown as TOutput; // Or handle more gracefully
+    }
 
     hooks?.onNodeStart?.(this.id);
 
@@ -146,43 +169,35 @@ export class AdaptiveNode<TInput = any, TOutput = any> {
         this.isCircuitOpen = false;
         this.errorCount = 0;
       } else {
-        this.sendError(
-          new Error("Circuit breaker is open"),
-          input,
-          graph,
-          hooks
-        );
-        return null;
+        const error = new Error("Circuit breaker is open");
+        this.handleError(error, input, graph, hooks);
+        throw error;
       }
     }
 
-    // Flow control - wait if at capacity
+    // Flow control
     if (this.processing >= this.maxConcurrent) {
       await new Promise<void>((resolve) => this.queue.push(resolve));
     }
 
     this.processing++;
 
-    let result: TOutput | null = null;
     try {
-      result = await this.executeProcessor(input, graph, hooks);
-
-      if (result !== null) {
-        if (this.outlets[0]) {
-          await this.outlets[0].send(result, graph, hooks);
-        }
+      const result = await this.executeProcessor(input, graph, hooks);
+      if (this.outlets[0]) {
+        await this.outlets[0].send(result, graph, hooks);
       }
-
+      hooks?.onNodeComplete?.(this.id, result);
       return result;
     } catch (error) {
       this.handleError(error as Error, input, graph, hooks);
-      return null;
+      // Re-throw the error to be caught by the caller (e.g., LoadBalancerNode)
+      throw error;
     } finally {
       this.processing--;
       if (this.queue.length > 0) {
         this.queue.shift()?.();
       }
-      hooks?.onNodeComplete?.(this.id, result);
     }
   }
 
@@ -359,6 +374,12 @@ export class Connection<TData, TTransformed = TData> {
         : (data as unknown as TTransformed);
       await this.target.process(transformedData, graph, hooks);
     } catch (error) {
+      if (error instanceof HandledNodeError) {
+        // This error was handled by a downstream node (like LoadBalancer).
+        // We just re-throw it to let the graph executor know a failure occurred,
+        // without creating a duplicate error report.
+        throw error;
+      }
       const connError: NodeError = {
         error: error as Error,
         input: data,
@@ -494,8 +515,26 @@ export class Graph {
         return;
       }
       if (visiting.has(node.id)) {
-        logger.warn({ nodeId: node.id }, `Cycle detected in graph involving node ${node.id}`);
-        return;
+        logger.warn(
+          { nodeId: node.id },
+          `Cycle detected in graph involving node ${node.id}`
+        );
+        // Do not return here, just log the warning.
+        // The execution logic must handle the cycle.
+      } else {
+        visiting.add(node.id);
+
+        // Visit dependencies first
+        for (const conn of this.connections) {
+          if (conn.target.id === node.id && conn.sourceOutlet === 0) {
+            const sourceNode = this.nodes.get(conn.source.id);
+            if (sourceNode) {
+              visit(sourceNode);
+            }
+          }
+        }
+
+        visiting.delete(node.id);
       }
 
       visiting.add(node.id);
@@ -533,15 +572,32 @@ export class Graph {
     this.isStopped = false;
     const executionOrder = this.getExecutionOrder(hooks);
 
-    const processNode = (node: AdaptiveNode, nodeInput: any) => {
-      return node.process(nodeInput, this, hooks);
+    const processNode = async (node: AdaptiveNode, nodeInput: any) => {
+      try {
+        await node.process(nodeInput, this, hooks);
+      } catch (error) {
+        // Errors are handled within the node (sent to error outlet) and re-thrown.
+        // The graph execution should not stop, so we catch and log here.
+        const logger = hooks?.logger || pino();
+        logger.warn(
+          { err: error, nodeId: node.id },
+          `Caught error during graph execution at node ${node.id}. Execution continues.`
+        );
+        // Re-throw the error so that Promise.allSettled can see the rejection.
+        throw error;
+      }
     };
 
     if (startNodeId) {
       const startNode = this.nodes.get(startNodeId);
       if (!startNode) throw new Error(`Start node ${startNodeId} not found`);
       const nodeInput = input instanceof Map ? input.get(startNodeId) : input;
-      await processNode(startNode, nodeInput);
+      try {
+        await processNode(startNode, nodeInput);
+      } catch (e) {
+        // The error is caught and logged inside processNode.
+        // We can ignore it here to allow execution to continue and results to be collected.
+      }
       // After execution, return the result from the last node in the execution order
       const lastNode = executionOrder[executionOrder.length - 1];
       return lastNode?.getLastResult();
@@ -581,11 +637,21 @@ export class Graph {
       );
     }
 
-    const promises = entryNodes.map((node) => {
+    const promises = entryNodes.map(async (node) => {
       const nodeInput = input instanceof Map ? input.get(node.id) : input;
-      return processNode(node, nodeInput);
+      await processNode(node, nodeInput);
     });
-    await Promise.all(promises);
+    
+    // We use Promise.allSettled to ensure all branches execute even if one throws.
+    const results = await Promise.allSettled(promises);
+
+    // Optional: Log rejected promises for debugging
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        const logger = hooks?.logger || pino();
+        logger.error({ reason: result.reason }, "An error occurred in an execution branch.");
+      }
+    });
 
     // Return the result from the last node in the execution order
     const lastNode = executionOrder[executionOrder.length - 1];
@@ -706,11 +772,11 @@ export const createDelayNode = (ms: number) =>
     return input;
   }).setName(`delay(${ms}ms)`);
 
-export const createThrottleNode = (ms: number) => {
-  return new AdaptiveNode(
+export const createThrottleNode = <T>(ms: number) => {
+  return new AdaptiveNode<T, T | null>(
     (() => {
       let lastEmit = 0;
-      return (input: any) => {
+      return (input: T) => {
         const now = Date.now();
         if (now - lastEmit >= ms) {
           lastEmit = now;
@@ -722,11 +788,11 @@ export const createThrottleNode = (ms: number) => {
   ).setName(`throttle(${ms}ms)`);
 };
 
-export const createDebounceNode = (ms: number) => {
+export const createDebounceNode = <T>(ms: number) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let lastResolve: ((value: any) => void) | null = null;
+  let lastResolve: ((value: T | null) => void) | null = null;
 
-  const node = new AdaptiveNode(async (input: any) => {
+  const node = new AdaptiveNode<T, T | null>(async (input: T) => {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
@@ -734,7 +800,7 @@ export const createDebounceNode = (ms: number) => {
       lastResolve(null); // Resolve previous promise to prevent hanging
     }
 
-    return new Promise((resolve) => {
+    return new Promise<T | null>((resolve) => {
       lastResolve = resolve;
       timeoutId = setTimeout(() => {
         resolve(input);
@@ -1039,33 +1105,33 @@ export class SplitNode<T = any> extends AdaptiveNode<T, T> {
     input: T,
     graph?: Graph,
     hooks?: ExecutionHooks
-  ): Promise<T | null> {
-    if (graph?.isStopped) return null;
-
+  ): Promise<T> {
+    // This now aligns with the base class's process method.
+    // It will throw on error rather than returning null.
+    if (graph?.isStopped) {
+      return null as unknown as T;
+    }
     hooks?.onNodeStart?.(this.id);
-
     if (input === null && this.initialValue !== null) {
       input = this.initialValue;
     }
 
-    let result: T | null = null;
     try {
-      result = await this.executeProcessor(input, graph, hooks);
-
-      if (result !== null) {
-        const promises = this.outlets
-          .slice(0, this.dataOutletCount)
-          .map((outlet) => outlet.send(result, graph, hooks));
-        await Promise.all(promises);
-      }
+      // The SplitNode's own processor is just a pass-through.
+      const result = await this.executeProcessor(input, graph, hooks);
+      
+      // Send the result to all data outlets
+      const promises = this.outlets
+        .slice(0, this.dataOutletCount)
+        .map((outlet) => outlet.send(result, graph, hooks));
+      await Promise.all(promises);
+      
+      hooks?.onNodeComplete?.(this.id, result);
+      return result;
     } catch (error) {
       this.handleError(error as Error, input, graph, hooks);
-      result = null;
-    } finally {
-      hooks?.onNodeComplete?.(this.id, result);
+      throw error; // Propagate error as per the new design
     }
-
-    return result;
   }
 }
 
@@ -1132,28 +1198,18 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
     }, healthCheckInterval);
   }
 
-  async process(
-    input: T,
-    graph?: Graph,
-    hooks?: ExecutionHooks
-  ): Promise<U | null> {
-    if (graph?.isStopped) return null;
+  async process(input: T, graph?: Graph, hooks?: ExecutionHooks): Promise<U> {
     hooks?.onNodeStart?.(this.id);
     const logger = hooks?.logger || this.logger;
 
-    if (input === null && this.initialValue !== null) {
-      input = this.initialValue;
-    }
-
-    const healthyNodes = this.nodes.filter((node) => {
-      const health = this.nodeHealth.get(node.id);
-      return health && health.healthy;
-    });
+    const healthyNodes = this.nodes.filter(
+      (node) => this.nodeHealth.get(node.id)?.healthy
+    );
 
     if (healthyNodes.length === 0) {
-      this.sendError(new Error("No healthy nodes available"), input, graph, hooks);
-      hooks?.onNodeComplete?.(this.id, null);
-      return null;
+      const error = new Error("No healthy nodes available");
+      this.sendError(error, input, graph, hooks);
+      throw error;
     }
 
     let selectedNode: AdaptiveNode<T, U>;
@@ -1162,20 +1218,16 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
       selectedNode = healthyNodes[this.index];
       this.index++;
     } else {
-      // Random strategy
       const randomIndex = Math.floor(Math.random() * healthyNodes.length);
       selectedNode = healthyNodes[randomIndex];
     }
 
-    let result: U | null = null;
     try {
-      result = await selectedNode.process(input, graph, hooks);
-      if (result === null) {
-        throw new Error(`Node ${selectedNode.id} returned null`);
-      }
-      if (this.outlets[0]) {
-        await this.outlets[0].send(result, graph, hooks);
-      }
+      const result = await selectedNode.process(input, graph, hooks);
+      // The main outlet of the LoadBalancer itself
+      await this.outlets[0].send(result, graph, hooks);
+      hooks?.onNodeComplete?.(this.id, result);
+      return result;
     } catch (error) {
       logger.warn(
         { err: error, nodeId: selectedNode.id },
@@ -1186,12 +1238,13 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
         health.healthy = false;
         health.lastCheck = Date.now();
       }
+      // Propagate the original error through the LoadBalancer's error outlet
       this.sendError(error as Error, input, graph, hooks);
-      result = null;
+      hooks?.onNodeComplete?.(this.id, null); // Indicate completion with error
+      // Instead of throwing, return null to allow the graph to continue.
+      // The error has been sent to the error outlet.
+      return null as U;
     }
-
-    hooks?.onNodeComplete?.(this.id, result);
-    return result;
   }
 
   destroy(): void {

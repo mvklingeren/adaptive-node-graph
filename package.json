@@ -23,7 +23,7 @@
     "test-improvements": "esbuild src/test-improvements.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-improvements.js --external:pino && node dist/test-improvements.js",
     "test-complex": "esbuild src/test-complex.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-complex.js --external:pino && node dist/test-complex.js",
     "clean": "rm -rf dist",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx ts-node src/test-basics.ts && npx ts-node src/test-improvements.ts && npx ts-node src/test-complex.ts"
   },
   "author": "mvklingeren",
   "license": "MIT",
