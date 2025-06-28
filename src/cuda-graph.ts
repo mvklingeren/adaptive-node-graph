@@ -28,6 +28,8 @@ export class CudaNode {
   public readonly outputs = new Map<string, { shape: number[]; dtype: string }>();
   // Holds named parameter tensors (e.g., weights, biases) for this node.
   public readonly parameters = new Map<string, CudaTensor>();
+  // Optional function to dynamically resolve output shapes from input shapes.
+  public shapeResolver: ((inputs: Map<string, { shape: number[] }>) => Map<string, { shape: number[] }>) | null = null;
 
   constructor(
     public readonly deviceCode: string,
@@ -50,6 +52,48 @@ export class CudaNode {
   addParameter(name: string, tensor: CudaTensor): this {
     this.parameters.set(name, tensor);
     return this;
+  }
+
+  setShapeResolver(resolver: (inputs: Map<string, { shape: number[] }>) => Map<string, { shape: number[] }>): this {
+    this.shapeResolver = resolver;
+    return this;
+  }
+
+  resolveShapes(): void {
+    if (!this.shapeResolver) {
+      return; // No dynamic shape logic to run
+    }
+
+    // Prepare the input for the resolver function
+    const currentInputShapes = new Map<string, { shape: number[] }>();
+    for (const [name, spec] of this.inputs.entries()) {
+      // Ensure no dynamic shapes exist in the inputs before resolving.
+      if (spec.shape.includes(-1)) {
+        // This can be an error or a signal that more connections are needed first.
+        // For now, we'll skip if not all inputs are concrete.
+        return;
+      }
+      currentInputShapes.set(name, { shape: spec.shape });
+    }
+
+    const resolvedOutputShapes = this.shapeResolver(currentInputShapes);
+
+    // Update the node's output shapes with the resolved ones.
+    for (const [name, resolvedSpec] of resolvedOutputShapes.entries()) {
+      const output = this.outputs.get(name);
+      if (output) {
+        this.outputs.set(name, { ...output, shape: resolvedSpec.shape });
+      }
+    }
+  }
+
+  updateInputShape(portName: string, newShape: number[]): void {
+    const input = this.inputs.get(portName);
+    if (!input) {
+      throw new Error(`Input port '${portName}' not found on node ${this.name}.`);
+    }
+    // Potentially add more validation here if needed
+    this.inputs.set(portName, { ...input, shape: newShape });
   }
 
   getKernelCall(
@@ -104,6 +148,34 @@ export class CudaGraph {
     }
     if (!toNode.inputs.has(toPort)) {
       throw new Error(`Target node ${toNode.name} does not have an input port named '${toPort}'.`);
+    }
+
+    // --- Shape Propagation and Validation ---
+    // First, ensure the source node's shapes are fully resolved.
+    fromNode.resolveShapes();
+
+    const sourceSpec = fromNode.outputs.get(fromPort)!;
+    const targetSpec = toNode.inputs.get(toPort)!;
+
+    // If the source shape is still dynamic, we cannot proceed.
+    if (sourceSpec.shape.includes(-1)) {
+      throw new Error(`Cannot connect from unresolved dynamic shape on ${fromNode.name}:${fromPort}.`);
+    }
+
+    // Propagate the now-concrete shape from the source to the target.
+    toNode.updateInputShape(toPort, sourceSpec.shape);
+
+    // Now that the target's input shape is updated, try to resolve its outputs.
+    toNode.resolveShapes();
+
+    // The original validation logic is now simplified because we always
+    // propagate from source to target. We can add a final check for safety.
+    const finalTargetSpec = toNode.inputs.get(toPort)!;
+    if (JSON.stringify(sourceSpec.shape) !== JSON.stringify(finalTargetSpec.shape)) {
+      // This should ideally not be reached if updateInputShape works correctly.
+      throw new Error(
+        `Shape mismatch after propagation when connecting ${fromNode.name}:${fromPort} (${JSON.stringify(sourceSpec.shape)}) to ${toNode.name}:${toPort} (${JSON.stringify(finalTargetSpec.shape)}).`
+      );
     }
     
     this.connections.add({ fromNode, fromPort, toNode, toPort });
@@ -232,12 +304,18 @@ export class CudaGraphCompiler {
     executionOrder.forEach((node, i) => {
         for (const [outputPort, spec] of node.outputs) {
             const key = `${node.id}:${outputPort}`;
+            if (spec.shape.includes(-1)) {
+                throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for output '${outputPort}' of node '${node.name}'. Ensure all graph inputs are connected and shapes are propagated.`);
+            }
             if (!tensorRegistry.has(key)) { // It's an intermediate tensor
                 const size = spec.shape.reduce((a, b) => a * b, 1) * 4; // size in bytes
                 intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 }); // liveEnd starts at i
             }
         }
-        for (const [inputPort] of node.inputs) {
+        for (const [inputPort, spec] of node.inputs) {
+            if (spec.shape.includes(-1)) {
+                 throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for input '${inputPort}' of node '${node.name}'. Ensure all graph inputs are connected and shapes are propagated.`);
+            }
             const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
             if (conn) {
                 const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
@@ -276,6 +354,18 @@ struct Tensor {
   T* data;
   const int* shape;
   int dims;
+
+  __device__ inline T& operator()(int i) {
+    return data[i];
+  }
+
+  __device__ inline T& operator()(int i, int j) {
+    return data[i * shape[1] + j];
+  }
+
+  __device__ inline T& operator()(int i, int j, int k) {
+    return data[(i * shape[1] + j) * shape[2] + k];
+  }
 };
 `;
     const tensorInstantiations: string[] = [];

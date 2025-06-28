@@ -68,20 +68,24 @@ export class ReLULayer implements Layer {
   addToGraph(graph: NeuralGraph): CudaNode {
     const deviceCode = `
       __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = 1;
         for (int i = 0; i < input.dims; ++i) {
           size *= input.shape[i];
         }
-        // This is a simplified loop for element-wise operation.
-        // A real implementation would use the thread index (idx).
-        for (int i = 0; i < size; ++i) {
-            output.data[i] = fmaxf(0.0f, input.data[i]);
+        if (idx < size) {
+          output(idx) = fmaxf(0.0f, input(idx));
         }
       }
     `;
     const reluNode = new CudaNode(deviceCode, "relu_forward")
-      .addInput('input', [-1, -1], 'float32') // Dynamic shape
-      .addOutput('output', [-1, -1], 'float32');
+      .addInput('input', [-1, -1], 'float32') // Dynamic input shape
+      .addOutput('output', [-1, -1], 'float32') // Dynamic output shape
+      .setShapeResolver(inputs => {
+        // A ReLU operation's output shape is always the same as its input shape.
+        const inputShape = inputs.get('input')!.shape;
+        return new Map([['output', { shape: inputShape }]]);
+      });
       
     graph.addNode(reluNode);
     return reluNode;
@@ -121,7 +125,7 @@ export class DenseLayer implements Layer {
     const biasParamName = `bias_${this.id}`;
 
     // This device code implements a matrix-vector multiplication.
-    // It assumes the input is a vector (dims == 1) and weights is a matrix (dims == 2).
+    // Each thread calculates the value for one output neuron.
     const deviceCode = `
       __device__ void dense_forward_${this.id}(
         Tensor<float> output, 
@@ -129,16 +133,17 @@ export class DenseLayer implements Layer {
         Tensor<float> ${weightParamName}, 
         Tensor<float> ${biasParamName}
       ) {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        
         int input_size = input.shape[0];
         int output_size = output.shape[0];
 
-        for (int i = 0; i < output_size; ++i) {
+        if (i < output_size) {
           float sum = 0.0f;
           for (int j = 0; j < input_size; ++j) {
-            // W is row-major: W[i, j] is at index i * input_size + j
-            sum += input.data[j] * ${weightParamName}.data[i * input_size + j];
+            sum += input(j) * ${weightParamName}(i, j);
           }
-          output.data[i] = sum + ${biasParamName}.data[i];
+          output(i) = sum + ${biasParamName}(i);
         }
       }
     `;

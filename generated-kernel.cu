@@ -8,6 +8,18 @@ struct Tensor {
   T* data;
   const int* shape;
   int dims;
+
+  __device__ inline T& operator()(int i) {
+    return data[i];
+  }
+
+  __device__ inline T& operator()(int i, int j) {
+    return data[i * shape[1] + j];
+  }
+
+  __device__ inline T& operator()(int i, int j, int k) {
+    return data[(i * shape[1] + j) * shape[2] + k];
+  }
 };
 
 
@@ -21,30 +33,30 @@ struct Tensor {
         Tensor<float> weights_0, 
         Tensor<float> bias_0
       ) {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        
         int input_size = input.shape[0];
         int output_size = output.shape[0];
 
-        for (int i = 0; i < output_size; ++i) {
+        if (i < output_size) {
           float sum = 0.0f;
           for (int j = 0; j < input_size; ++j) {
-            // W is row-major: W[i, j] is at index i * input_size + j
-            sum += input.data[j] * weights_0.data[i * input_size + j];
+            sum += input(j) * weights_0(i, j);
           }
-          output.data[i] = sum + bias_0.data[i];
+          output(i) = sum + bias_0(i);
         }
       }
     
 
 
       __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = 1;
         for (int i = 0; i < input.dims; ++i) {
           size *= input.shape[i];
         }
-        // This is a simplified loop for element-wise operation.
-        // A real implementation would use the thread index (idx).
-        for (int i = 0; i < size; ++i) {
-            output.data[i] = fmaxf(0.0f, input.data[i]);
+        if (idx < size) {
+          output(idx) = fmaxf(0.0f, input(idx));
         }
       }
     
@@ -56,16 +68,17 @@ struct Tensor {
         Tensor<float> weights_1, 
         Tensor<float> bias_1
       ) {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        
         int input_size = input.shape[0];
         int output_size = output.shape[0];
 
-        for (int i = 0; i < output_size; ++i) {
+        if (i < output_size) {
           float sum = 0.0f;
           for (int j = 0; j < input_size; ++j) {
-            // W is row-major: W[i, j] is at index i * input_size + j
-            sum += input.data[j] * weights_1.data[i * input_size + j];
+            sum += input(j) * weights_1(i, j);
           }
-          output.data[i] = sum + bias_1.data[i];
+          output(i) = sum + bias_1(i);
         }
       }
     
@@ -99,11 +112,11 @@ extern "C" __global__ void executeGraph(
 
   // --- Variable Declarations ---
   const int intermediate_0_shape[] = {256};
-  const int intermediate_1_shape[] = {-1, -1};
+  const int intermediate_1_shape[] = {256};
 
   // --- Tensor Struct Instantiation ---
   Tensor<float> intermediate_0_tensor = {(float*)(workspace + 0), intermediate_0_shape, 1};
-  Tensor<float> intermediate_1_tensor = {(float*)(workspace + 0), intermediate_1_shape, 2};
+  Tensor<float> intermediate_1_tensor = {(float*)(workspace + 0), intermediate_1_shape, 1};
   Tensor<float> input = {input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
   Tensor<float> weights_0 = {weights_0_data, weights_0_shape, weights_0_dims};
