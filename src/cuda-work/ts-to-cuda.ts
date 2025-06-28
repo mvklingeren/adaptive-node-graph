@@ -38,7 +38,11 @@ export function tsToCuda(code: string): {
       }
 
       const body = processBlock(node.body);
-      const deviceCode = `__device__ void ${functionName}(${paramStrings.join(
+      const leadingComments = ts.getLeadingCommentRanges(code, node.pos);
+      const isGlobal = leadingComments?.some(comment => code.substring(comment.pos, comment.end).includes("@cuda global"));
+
+      const kernelType = isGlobal ? "__global__" : "__device__";
+      const deviceCode = `${kernelType} void ${functionName}(${paramStrings.join(
         ", "
       )}) {\n${body}\n}`;
       return { functionName, deviceCode };
@@ -63,7 +67,9 @@ export function tsToCuda(code: string): {
       let result = "  ";
       for (const decl of stmt.declarationList.declarations) {
         const name = decl.name.getText(sourceFile);
-        const type = decl.type ? tsToCudaType(decl.type) : "float"; // Infer type, default to float
+        const type = decl.type
+          ? tsToCudaType(decl.type)
+          : inferTypeFromExpression(decl.initializer);
         result += `${type} ${name}`;
         if (decl.initializer) {
           result += ` = ${processExpression(decl.initializer)}`;
@@ -97,6 +103,11 @@ export function tsToCuda(code: string): {
       const body = processBlock(stmt.statement as ts.Block);
       return `  for (${initializer}; ${condition}; ${incrementor}) {\n${body}  }\n`;
     }
+    if (ts.isWhileStatement(stmt)) {
+      const condition = processExpression(stmt.expression);
+      const body = processBlock(stmt.statement as ts.Block);
+      return `  while (${condition}) {\n${body}  }\n`;
+    }
     throw new Error(`Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`);
   }
 
@@ -104,7 +115,9 @@ export function tsToCuda(code: string): {
     return list.declarations
       .map((decl) => {
         const name = decl.name.getText(sourceFile);
-        const type = decl.type ? tsToCudaType(decl.type) : "float";
+        const type = decl.type
+          ? tsToCudaType(decl.type)
+          : inferTypeFromExpression(decl.initializer);
         let result = `${type} ${name}`;
         if (decl.initializer) {
           result += ` = ${processExpression(decl.initializer)}`;
@@ -112,6 +125,24 @@ export function tsToCuda(code: string): {
         return result;
       })
       .join(", ");
+  }
+
+  function inferTypeFromExpression(expr?: ts.Expression): string {
+    if (!expr) return "float"; // Default type if no initializer
+
+    if (ts.isNumericLiteral(expr)) {
+      const text = expr.getText(sourceFile);
+      console.log(`Inferring type for numeric literal: ${text}`);
+      return text.includes(".") ? "float" : "int";
+    }
+    if (ts.isStringLiteral(expr)) {
+      return "char*";
+    }
+    if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) {
+      return "bool";
+    }
+    // Add more complex inference rules as needed
+    return "float"; // Default fallback
   }
 
   function processExpression(expr: ts.Expression): string {
@@ -135,7 +166,7 @@ export function tsToCuda(code: string): {
       return expr.text;
     }
     if (ts.isNumericLiteral(expr)) {
-      return expr.text;
+      return expr.getText(sourceFile);
     }
     if (ts.isPrefixUnaryExpression(expr)) {
       const operand = processExpression(expr.operand);
@@ -146,6 +177,12 @@ export function tsToCuda(code: string): {
       const operand = processExpression(expr.operand);
       const operator = ts.tokenToString(expr.operator);
       return `${operand}${operator}`;
+    }
+    if (expr.kind === ts.SyntaxKind.TrueKeyword) {
+      return "true";
+    }
+    if (expr.kind === ts.SyntaxKind.FalseKeyword) {
+      return "false";
     }
     throw new Error(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`);
   }

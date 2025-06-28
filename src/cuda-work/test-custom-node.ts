@@ -134,10 +134,136 @@ async function testForLoop() {
   }
 }
 
+async function testTypeInference() {
+  console.log("\n--- Running Type Inference Test ---");
+  const runtime = new MockCudaRuntime();
+  const tsCode = `
+    function customTypeInference(A: number, C: number): void {
+      let x = 5;
+      let y = 5.0;
+      let z = true;
+      C[0] = x + y;
+    }
+  `;
+
+  try {
+    const customNode = new CustomCudaNode(tsCode);
+    customNode.outputs.clear();
+    customNode.addOutput("C", [-1], "float32");
+
+    const graph = new CudaGraph("TypeInferenceTest");
+    graph.addNode(customNode);
+
+    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
+    graph.addNode(inputNodeA);
+    graph.connect(inputNodeA, "A", customNode, "A");
+
+    const compiler = new CudaGraphCompiler(runtime);
+    const { kernelCode } = await compiler.compile(graph);
+
+    console.log("Generated kernel code for type inference test:");
+    console.log(kernelCode);
+
+    if (
+      kernelCode.includes("int x = 5;") &&
+      kernelCode.includes("float y = 5.0;") &&
+      kernelCode.includes("bool z = true;")
+    ) {
+      console.log("Test PASSED: Kernel code contains the correctly inferred types.");
+    } else {
+      console.error("Test FAILED: Kernel code does not contain the correctly inferred types.");
+    }
+  } catch (error) {
+    console.error("Test FAILED:", error);
+  }
+}
+
+async function testWhileLoop() {
+  console.log("\n--- Running While Loop Test ---");
+  const runtime = new MockCudaRuntime();
+  const tsCode = `
+    function customWhile(A: number, C: number): void {
+      let i = 0;
+      while (i < 10) {
+        C[i] = A[i];
+        i++;
+      }
+    }
+  `;
+
+  try {
+    const customNode = new CustomCudaNode(tsCode);
+    customNode.outputs.clear();
+    customNode.addOutput("C", [-1], "float32");
+
+    const graph = new CudaGraph("WhileLoopTest");
+    graph.addNode(customNode);
+
+    const inputNodeA = new CudaNode("","").addOutput("A", [10], "float32");
+    graph.addNode(inputNodeA);
+    graph.connect(inputNodeA, "A", customNode, "A");
+
+    const compiler = new CudaGraphCompiler(runtime);
+    const { kernelCode } = await compiler.compile(graph);
+
+    console.log("Generated kernel code for while loop test:");
+    console.log(kernelCode);
+
+    if (kernelCode.includes("while (i < 10)")) {
+      console.log("Test PASSED: Kernel code contains the while loop.");
+    } else {
+      console.error("Test FAILED: Kernel code does not contain the while loop.");
+    }
+  } catch (error) {
+    console.error("Test FAILED:", error);
+  }
+}
+
+async function testKernelTypeConfiguration() {
+  console.log("\n--- Running Kernel Type Configuration Test ---");
+  const runtime = new MockCudaRuntime();
+  const tsCode = `
+    // @cuda global
+    function customGlobalKernel(A: number, C: number): void {
+      C[0] = A[0];
+    }
+  `;
+
+  try {
+    const customNode = new CustomCudaNode(tsCode);
+    customNode.outputs.clear();
+    customNode.addOutput("C", [-1], "float32");
+
+    const graph = new CudaGraph("KernelTypeTest");
+    graph.addNode(customNode);
+
+    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
+    graph.addNode(inputNodeA);
+    graph.connect(inputNodeA, "A", customNode, "A");
+
+    const compiler = new CudaGraphCompiler(runtime);
+    const { kernelCode } = await compiler.compile(graph);
+
+    console.log("Generated kernel code for kernel type configuration test:");
+    console.log(kernelCode);
+
+    if (kernelCode.includes("__global__ void customGlobalKernel")) {
+      console.log("Test PASSED: Kernel code contains the __global__ kernel.");
+    } else {
+      console.error("Test FAILED: Kernel code does not contain the __global__ kernel.");
+    }
+  } catch (error) {
+    console.error("Test FAILED:", error);
+  }
+}
+
 async function runTests() {
   await testCustomCudaNode();
   await testIfStatement();
   await testForLoop();
+  await testTypeInference();
+  await testWhileLoop();
+  await testKernelTypeConfiguration();
 }
 
 runTests();
