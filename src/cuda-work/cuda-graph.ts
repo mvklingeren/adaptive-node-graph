@@ -8,7 +8,7 @@
 // ============================================================================
 
 import crypto from "crypto";
-import { CudaRuntime, CudaTensor, CudaKernel } from "./cuda-abstractions";
+import { CudaRuntime, CudaTensor, CudaKernel } from "./cuda-abstractions.js";
 
 // ============================================================================
 // CudaNode: A Generic GPU Operation
