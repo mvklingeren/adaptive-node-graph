@@ -1,8 +1,8 @@
-// core-improved.ts
 // Enhanced Core library for the Adaptive Node with Routing System
 // Implements: Error Handling, Type Safety, Async Flow Control, and more
 
 import pino from "pino";
+import crypto from "crypto";
 
 // ============================================================================
 // Core Types and Interfaces
@@ -641,15 +641,18 @@ export class Graph {
       const nodeInput = input instanceof Map ? input.get(node.id) : input;
       await processNode(node, nodeInput);
     });
-    
+
     // We use Promise.allSettled to ensure all branches execute even if one throws.
     const results = await Promise.allSettled(promises);
 
     // Optional: Log rejected promises for debugging
     results.forEach((result) => {
-      if (result.status === 'rejected') {
+      if (result.status === "rejected") {
         const logger = hooks?.logger || pino();
-        logger.error({ reason: result.reason }, "An error occurred in an execution branch.");
+        logger.error(
+          { reason: result.reason },
+          "An error occurred in an execution branch."
+        );
       }
     });
 
@@ -1101,11 +1104,7 @@ export class SplitNode<T = any> extends AdaptiveNode<T, T> {
     this.outlets = [...dataOutlets, errorOutlet];
   }
 
-  async process(
-    input: T,
-    graph?: Graph,
-    hooks?: ExecutionHooks
-  ): Promise<T> {
+  async process(input: T, graph?: Graph, hooks?: ExecutionHooks): Promise<T> {
     // This now aligns with the base class's process method.
     // It will throw on error rather than returning null.
     if (graph?.isStopped) {
@@ -1119,13 +1118,13 @@ export class SplitNode<T = any> extends AdaptiveNode<T, T> {
     try {
       // The SplitNode's own processor is just a pass-through.
       const result = await this.executeProcessor(input, graph, hooks);
-      
+
       // Send the result to all data outlets
       const promises = this.outlets
         .slice(0, this.dataOutletCount)
         .map((outlet) => outlet.send(result, graph, hooks));
       await Promise.all(promises);
-      
+
       hooks?.onNodeComplete?.(this.id, result);
       return result;
     } catch (error) {

@@ -7,7 +7,7 @@ import {
   createLoadBalancerNode,
   createProcessor,
   testGraph
-} from "./chunks/chunk-N3FCXA6N.js";
+} from "./chunks/chunk-KMFS2BJO.js";
 
 // src/test-basics.ts
 import { strict as assert } from "assert";

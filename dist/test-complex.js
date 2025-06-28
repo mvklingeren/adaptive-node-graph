@@ -11,7 +11,7 @@ import {
   createMergeNode,
   createProcessor,
   createSplitNode
-} from "./chunks/chunk-N3FCXA6N.js";
+} from "./chunks/chunk-KMFS2BJO.js";
 
 // src/test-complex.ts
 import { strict as assert } from "assert";
