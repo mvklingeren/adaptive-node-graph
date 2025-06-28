@@ -14,7 +14,7 @@ import { CudaRuntime, CudaTensor } from "./cuda-abstractions";
 // ============================================================================
 
 export class NeuralGraph extends CudaGraph {
-  private lastLayer: CudaNode | null = null;
+  private lastNode: CudaNode | null = null;
 
   constructor(name: string = "UntitledNeuralGraph") {
     super(name);
@@ -22,19 +22,19 @@ export class NeuralGraph extends CudaGraph {
 
   /**
    * Adds a neural network layer to the graph.
-   * The layer is automatically connected to the previous layer.
+   * The layer is automatically connected to the previous layer, assuming
+   * a standard 'output' to 'input' connection.
    * @param layer - The layer to add.
    */
   addLayer(layer: Layer): this {
-    // A layer is responsible for creating and adding its own CudaNode(s)
-    // to the graph, and returning the final output node of the layer.
-    const outputNode = layer.addToGraph(this);
+    const currentNode = layer.addToGraph(this);
 
-    if (this.lastLayer) {
-      this.connect(this.lastLayer, outputNode);
+    if (this.lastNode) {
+      // Connect the default output of the last node to the default input of the current node.
+      this.connect(this.lastNode, 'output', currentNode, 'input');
     }
 
-    this.lastLayer = outputNode;
+    this.lastNode = currentNode;
     return this;
   }
 }
@@ -65,25 +65,16 @@ export interface Layer {
  * f(x) = max(0, x)
  */
 export class ReLULayer implements Layer {
-  private static instanceCounter = 0;
-  private readonly id: number;
-
-  constructor() {
-    this.id = ReLULayer.instanceCounter++;
-  }
-
   addToGraph(graph: NeuralGraph): CudaNode {
     const deviceCode = `
-      __device__ float relu_forward(float x) {
-        return fmaxf(0.0f, x);
+      __device__ void relu_forward(float* out, float in) {
+        *out = fmaxf(0.0f, in);
       }
     `;
-    const reluNode = new CudaNode(
-      deviceCode,
-      "relu_forward",
-      `relu_out_${this.id}`, // Unique output variable name
-      ["x"] // Input variable name
-    );
+    const reluNode = new CudaNode(deviceCode, "relu_forward")
+      .addInput('input', [1], 'float32')
+      .addOutput('output', [1], 'float32');
+      
     graph.addNode(reluNode);
     return reluNode;
   }
@@ -98,8 +89,8 @@ export class ReLULayer implements Layer {
 export class DenseLayer implements Layer {
   private static instanceCounter = 0;
   private readonly id: number;
-  private weights: CudaTensor;
-  private bias: CudaTensor;
+  private weights!: CudaTensor;
+  private bias!: CudaTensor;
 
   constructor(
     private runtime: CudaRuntime,
@@ -107,17 +98,14 @@ export class DenseLayer implements Layer {
     public readonly outputFeatures: number
   ) {
     this.id = DenseLayer.instanceCounter++;
-    // In a real scenario, you would initialize these tensors with random values.
-    // For now, we just allocate them.
-    this.weights = {} as CudaTensor; // Placeholder
-    this.bias = {} as CudaTensor; // Placeholder
   }
 
   async initialize(): Promise<void> {
-      // Allocate memory for weights and bias on the GPU
-      this.weights = await this.runtime.malloc(this.inputFeatures * this.outputFeatures * 4); // 4 bytes per float
-      this.bias = await this.runtime.malloc(this.outputFeatures * 4);
-      // Here you would typically initialize the tensors with random data.
+      const weightShape = [this.inputFeatures, this.outputFeatures];
+      const biasShape = [this.outputFeatures];
+      this.weights = await this.runtime.malloc(this.inputFeatures * this.outputFeatures * 4, weightShape, "float32");
+      this.bias = await this.runtime.malloc(this.outputFeatures * 4, biasShape, "float32");
+      // In a real implementation, you would initialize the tensors with random data.
   }
 
   addToGraph(graph: NeuralGraph): CudaNode {
@@ -127,22 +115,17 @@ export class DenseLayer implements Layer {
     // This device code is a simplification for a single value.
     // A real implementation would perform a dot product.
     const deviceCode = `
-      __device__ float dense_forward_${this.id}(float input, const float* ${weightParamName}, const float* ${biasParamName}) {
+      __device__ void dense_forward_${this.id}(float* out, float in, const float* ${weightParamName}, const float* ${biasParamName}) {
         // Simple multiplication, not a dot product, for this example.
-        return input * ${weightParamName}[0] + ${biasParamName}[0];
+        *out = in * ${weightParamName}[0] + ${biasParamName}[0];
       }
     `;
 
-    const denseNode = new CudaNode(
-      deviceCode,
-      `dense_forward_${this.id}`,
-      `dense_out_${this.id}`,
-      ["input"]
-    );
-
-    // Add the weight and bias tensors as parameters to the node with unique names.
-    denseNode.addParameter(weightParamName, this.weights);
-    denseNode.addParameter(biasParamName, this.bias);
+    const denseNode = new CudaNode(deviceCode, `dense_forward_${this.id}`)
+      .addInput('input', [1], 'float32')
+      .addOutput('output', [1], 'float32')
+      .addParameter(weightParamName, this.weights)
+      .addParameter(biasParamName, this.bias);
 
     graph.addNode(denseNode);
     return denseNode;

@@ -17,6 +17,10 @@ export interface CudaTensor {
   readonly id: string;
   /** The size of the allocated memory in bytes. */
   readonly byteLength: number;
+  /** The dimensions of the tensor. */
+  readonly shape: readonly number[];
+  /** The data type of the tensor elements. */
+  readonly dtype: "float32" | "int32"; // Add more types as needed
   /** Frees the memory on the GPU. */
   free(): Promise<void>;
 }
@@ -57,9 +61,11 @@ export interface CudaRuntime {
   /**
    * Allocates a block of memory on the GPU.
    * @param byteLength - The number of bytes to allocate.
+   * @param shape - The dimensions of the tensor.
+   * @param dtype - The data type of the tensor elements.
    * @returns A promise that resolves to a CudaTensor representing the GPU memory.
    */
-  malloc(byteLength: number): Promise<CudaTensor>;
+  malloc(byteLength: number, shape?: number[], dtype?: "float32" | "int32"): Promise<CudaTensor>;
 
   /**
    * Copies data from host (CPU) memory to device (GPU) memory.
@@ -137,13 +143,15 @@ export class MockCudaRuntime implements CudaRuntime {
     };
   }
 
-  async malloc(byteLength: number): Promise<CudaTensor> {
+  async malloc(byteLength: number, shape: number[] = [byteLength / 4], dtype: "float32" | "int32" = "float32"): Promise<CudaTensor> {
     const tensorId = `mock_tensor_${this.nextTensorId++}`;
     this.memory.set(tensorId, Buffer.alloc(byteLength));
     console.log(`[MockCudaRuntime] Allocated ${byteLength} bytes for tensor ${tensorId}`);
     return {
       id: tensorId,
       byteLength,
+      shape,
+      dtype,
       free: async () => {
         this.memory.delete(tensorId);
         console.log(`[MockCudaRuntime] Freed tensor ${tensorId}`);

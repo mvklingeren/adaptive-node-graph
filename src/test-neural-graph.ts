@@ -40,6 +40,7 @@ async function main() {
 
   // 5. Compile the entire graph into a single CUDA kernel.
   console.log("\nCompiling graph to a single CUDA kernel...");
+  // The compiler now infers the graph's inputs and outputs automatically.
   const { kernel, parameters, kernelCode } = await compiler.compile(model);
 
   console.log("\nCompilation complete.");
@@ -60,16 +61,17 @@ async function main() {
   const inputData = new Float32Array(batchSize * 784).fill(1.0);
   const outputData = new Float32Array(batchSize * 10);
 
-  // Allocate GPU memory for input and output.
-  const d_input = await runtime.malloc(inputData.byteLength);
-  const d_output = await runtime.malloc(outputData.byteLength);
+  // Allocate GPU memory for input and output, now with shape information.
+  const d_input = await runtime.malloc(inputData.byteLength, [batchSize, 784], "float32");
+  const d_output = await runtime.malloc(outputData.byteLength, [batchSize, 10], "float32");
 
   // Copy input data to the GPU.
   await runtime.memcpyHostToDevice(d_input, Buffer.from(inputData.buffer));
 
   // 8. Launch the kernel.
-  // The arguments must include the main input/output tensors plus all
-  // parameter tensors collected by the compiler.
+  // The arguments must now be ordered correctly: graph inputs, then graph
+  // outputs, then the collected parameters. Our simple sequential model has
+  // one input ('input') and one output ('output').
   const allArgs = [d_input, d_output, ...parameters];
   
   console.log(`Launching kernel with ${allArgs.length} total arguments.`);
