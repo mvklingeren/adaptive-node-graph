@@ -1202,6 +1202,10 @@ class LoadBalancerNode<T, U> extends AdaptiveNode<T, U> {
     hooks?.onNodeStart?.(this.id);
     const logger = hooks?.logger || this.logger;
 
+    if (input === null && this.initialValue !== null) {
+      input = this.initialValue;
+    }
+
     const healthyNodes = this.nodes.filter(
       (node) => this.nodeHealth.get(node.id)?.healthy
     );
