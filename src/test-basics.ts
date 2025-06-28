@@ -250,22 +250,26 @@ tests["Real-time Stream Load Balancer"] = async () => {
   const worker2 = new TestNode<any>().setName("worker2");
   const loadBalancer = createLoadBalancerNode([worker1, worker2], { strategy: "round-robin" });
   
-  graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
+  try {
+    graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
 
-  // The load balancer itself is the entry point
-  loadBalancer.setInitialValue({ data: 1 });
-  await graph.execute(null, loadBalancer.id);
-  loadBalancer.setInitialValue({ data: 2 });
-  await graph.execute(null, loadBalancer.id);
-  loadBalancer.setInitialValue({ data: 3 });
-  await graph.execute(null, loadBalancer.id);
-  loadBalancer.setInitialValue({ data: 4 });
-  await graph.execute(null, loadBalancer.id);
+    // The load balancer itself is the entry point
+    loadBalancer.setInitialValue({ data: 1 });
+    await graph.execute(null, loadBalancer.id);
+    loadBalancer.setInitialValue({ data: 2 });
+    await graph.execute(null, loadBalancer.id);
+    loadBalancer.setInitialValue({ data: 3 });
+    await graph.execute(null, loadBalancer.id);
+    loadBalancer.setInitialValue({ data: 4 });
+    await graph.execute(null, loadBalancer.id);
 
-  worker1.assertReceived([{ data: 1 }, { data: 3 }]);
-  worker2.assertReceived([{ data: 2 }, { data: 4 }]);
-  worker1.assertNoErrors();
-  worker2.assertNoErrors();
+    worker1.assertReceived([{ data: 1 }, { data: 3 }]);
+    worker2.assertReceived([{ data: 2 }, { data: 4 }]);
+    worker1.assertNoErrors();
+    worker2.assertNoErrors();
+  } finally {
+    loadBalancer.destroy();
+  }
 };
 
 // ============================================================================

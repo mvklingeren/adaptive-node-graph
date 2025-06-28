@@ -155,18 +155,22 @@ tests["Time-based Operators (Delay, Throttle, Debounce)"] = async () => {
   debounceGraph.connect(debounceInput, debounceNode);
   debounceGraph.connect(debounceNode, debounceOutput);
 
-  // Fire multiple inputs in quick succession
-  debounceGraph.execute(1, debounceInput.id);
-  debounceGraph.execute(2, debounceInput.id);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  debounceGraph.execute(3, debounceInput.id); // This should be the one that resolves
+  try {
+    // Fire multiple inputs in quick succession
+    debounceGraph.execute(1, debounceInput.id);
+    debounceGraph.execute(2, debounceInput.id);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    debounceGraph.execute(3, debounceInput.id); // This should be the one that resolves
 
-  // Wait for debounce time to pass
-  await new Promise((resolve) => setTimeout(resolve, 110));
-  assert.deepStrictEqual(
-    debounceOutput.receivedInputs.filter((i) => i !== null),
-    [3]
-  );
+    // Wait for debounce time to pass
+    await new Promise((resolve) => setTimeout(resolve, 110));
+    assert.deepStrictEqual(
+      debounceOutput.receivedInputs.filter((i) => i !== null),
+      [3]
+    );
+  } finally {
+    debounceNode.destroy();
+  }
 };
 
 // ============================================================================
@@ -221,16 +225,20 @@ tests["Load Balancer (Round Robin)"] = async () => {
     strategy: "round-robin",
   });
 
-  graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
-  // Note: The load balancer internally processes to its workers,
-  // so we don't connect them in the graph here. We just need to execute it.
+  try {
+    graph.addNode(loadBalancer).addNode(worker1).addNode(worker2);
+    // Note: The load balancer internally processes to its workers,
+    // so we don't connect them in the graph here. We just need to execute it.
 
-  await graph.execute(1, loadBalancer.id);
-  await graph.execute(2, loadBalancer.id);
-  await graph.execute(3, loadBalancer.id);
+    await graph.execute(1, loadBalancer.id);
+    await graph.execute(2, loadBalancer.id);
+    await graph.execute(3, loadBalancer.id);
 
-  worker1.assertReceived([1, 3]);
-  worker2.assertReceived([2]);
+    worker1.assertReceived([1, 3]);
+    worker2.assertReceived([2]);
+  } finally {
+    loadBalancer.destroy();
+  }
 };
 
 // ============================================================================
