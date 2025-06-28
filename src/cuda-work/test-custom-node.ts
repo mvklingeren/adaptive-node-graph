@@ -9,7 +9,7 @@ async function testCustomCudaNode() {
 
   const tsCode = `
     function customAdd(A: number, B: number, C: number): void {
-      const i = 0; // Simplified for testing
+      let i: number = 0; // Simplified for testing
       C[i] = A[i] + B[i];
     }
   `;
@@ -50,4 +50,94 @@ async function testCustomCudaNode() {
   }
 }
 
-testCustomCudaNode();
+async function testIfStatement() {
+  console.log("\n--- Running If Statement Test ---");
+  const runtime = new MockCudaRuntime();
+  const tsCode = `
+    function customIf(A: number, B: number, C: number): void {
+      let i: number = 0;
+      if (A[i] > B[i]) {
+        C[i] = A[i];
+      } else {
+        C[i] = B[i];
+      }
+    }
+  `;
+
+  try {
+    const customNode = new CustomCudaNode(tsCode);
+    customNode.outputs.clear();
+    customNode.addOutput("C", [-1], "float32");
+
+    const graph = new CudaGraph("IfTest");
+    graph.addNode(customNode);
+
+    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
+    const inputNodeB = new CudaNode("","").addOutput("B", [1], "float32");
+    graph.addNode(inputNodeA);
+    graph.addNode(inputNodeB);
+    graph.connect(inputNodeA, "A", customNode, "A");
+    graph.connect(inputNodeB, "B", customNode, "B");
+
+    const compiler = new CudaGraphCompiler(runtime);
+    const { kernelCode } = await compiler.compile(graph);
+
+    console.log("Generated kernel code for if statement test:");
+    console.log(kernelCode);
+
+    if (kernelCode.includes("if (A(i) > B(i))")) {
+      console.log("Test PASSED: Kernel code contains the if statement.");
+    } else {
+      console.error("Test FAILED: Kernel code does not contain the if statement.");
+    }
+  } catch (error) {
+    console.error("Test FAILED:", error);
+  }
+}
+
+async function testForLoop() {
+  console.log("\n--- Running For Loop Test ---");
+  const runtime = new MockCudaRuntime();
+  const tsCode = `
+    function customFor(A: number, C: number): void {
+      for (let i: number = 0; i < 10; i++) {
+        C[i] = A[i] * 2.0;
+      }
+    }
+  `;
+
+  try {
+    const customNode = new CustomCudaNode(tsCode);
+    customNode.outputs.clear();
+    customNode.addOutput("C", [-1], "float32");
+
+    const graph = new CudaGraph("ForLoopTest");
+    graph.addNode(customNode);
+
+    const inputNodeA = new CudaNode("","").addOutput("A", [10], "float32");
+    graph.addNode(inputNodeA);
+    graph.connect(inputNodeA, "A", customNode, "A");
+
+    const compiler = new CudaGraphCompiler(runtime);
+    const { kernelCode } = await compiler.compile(graph);
+
+    console.log("Generated kernel code for for loop test:");
+    console.log(kernelCode);
+
+    if (kernelCode.includes("for (float i = 0; i < 10; i++)")) {
+      console.log("Test PASSED: Kernel code contains the for loop.");
+    } else {
+      console.error("Test FAILED: Kernel code does not contain the for loop.");
+    }
+  } catch (error) {
+    console.error("Test FAILED:", error);
+  }
+}
+
+async function runTests() {
+  await testCustomCudaNode();
+  await testIfStatement();
+  await testForLoop();
+}
+
+runTests();

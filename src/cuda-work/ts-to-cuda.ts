@@ -11,13 +11,11 @@ export function tsToCuda(code: string): {
     true
   );
 
-  let functionName = "";
-  let deviceCode = "";
-
-  function visit(node: ts.Node) {
+  function visit(node: ts.Node): { functionName: string; deviceCode: string } | null {
     if (ts.isFunctionDeclaration(node) && node.name) {
-      functionName = node.name.text;
-      if (node.parameters.length === 0) return;
+      const functionName = node.name.text;
+      if (node.parameters.length === 0)
+        throw new Error("Function must have at least one parameter (output).");
 
       const inputParams = node.parameters.slice(0, -1);
       const outputParam = node.parameters[node.parameters.length - 1];
@@ -35,18 +33,26 @@ export function tsToCuda(code: string): {
         ...inputParams.map((p) => mapParam(p, false)),
       ];
 
-      const body = processBlock(node.body!);
-      deviceCode = `__device__ void ${functionName}(${paramStrings.join(", ")}) {\n${body}\n}`;
+      if (!node.body) {
+        throw new Error(`Function ${functionName} must have a body.`);
+      }
+
+      const body = processBlock(node.body);
+      const deviceCode = `__device__ void ${functionName}(${paramStrings.join(
+        ", "
+      )}) {\n${body}\n}`;
+      return { functionName, deviceCode };
     }
-    ts.forEachChild(node, visit);
+
+    for (const child of node.getChildren(sourceFile)) {
+      const result = visit(child);
+      if (result) return result;
+    }
+    return null;
   }
 
   function processBlock(block: ts.Block): string {
-    let bodyCode = "";
-    block.statements.forEach((stmt) => {
-      bodyCode += processStatement(stmt);
-    });
-    return bodyCode;
+    return block.statements.map(processStatement).join("");
   }
 
   function processStatement(stmt: ts.Statement): string {
@@ -57,7 +63,7 @@ export function tsToCuda(code: string): {
       let result = "  ";
       for (const decl of stmt.declarationList.declarations) {
         const name = decl.name.getText(sourceFile);
-        const type = "int"; // Simplified for now
+        const type = decl.type ? tsToCudaType(decl.type) : "float"; // Infer type, default to float
         result += `${type} ${name}`;
         if (decl.initializer) {
           result += ` = ${processExpression(decl.initializer)}`;
@@ -66,7 +72,46 @@ export function tsToCuda(code: string): {
       }
       return result;
     }
-    return `// Unsupported statement: ${ts.SyntaxKind[stmt.kind]}\n`;
+    if (ts.isIfStatement(stmt)) {
+      const condition = processExpression(stmt.expression);
+      const thenStatement = processBlock(stmt.thenStatement as ts.Block);
+      let result = `  if (${condition}) {\n${thenStatement}  }\n`;
+      if (stmt.elseStatement) {
+        if (ts.isIfStatement(stmt.elseStatement)) {
+          // Handle 'else if'
+          const elseIfResult = processStatement(stmt.elseStatement).trimStart();
+          result = result.trimEnd() + ` else ${elseIfResult}\n`;
+        } else {
+          const elseStatement = processBlock(stmt.elseStatement as ts.Block);
+          result += `  else {\n${elseStatement}  }\n`;
+        }
+      }
+      return result;
+    }
+    if (ts.isForStatement(stmt)) {
+      const initializer = stmt.initializer
+        ? processVariableDeclarationList(stmt.initializer as ts.VariableDeclarationList)
+        : "";
+      const condition = stmt.condition ? processExpression(stmt.condition) : "";
+      const incrementor = stmt.incrementor ? processExpression(stmt.incrementor) : "";
+      const body = processBlock(stmt.statement as ts.Block);
+      return `  for (${initializer}; ${condition}; ${incrementor}) {\n${body}  }\n`;
+    }
+    throw new Error(`Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`);
+  }
+
+  function processVariableDeclarationList(list: ts.VariableDeclarationList): string {
+    return list.declarations
+      .map((decl) => {
+        const name = decl.name.getText(sourceFile);
+        const type = decl.type ? tsToCudaType(decl.type) : "float";
+        let result = `${type} ${name}`;
+        if (decl.initializer) {
+          result += ` = ${processExpression(decl.initializer)}`;
+        }
+        return result;
+      })
+      .join(", ");
   }
 
   function processExpression(expr: ts.Expression): string {
@@ -92,13 +137,25 @@ export function tsToCuda(code: string): {
     if (ts.isNumericLiteral(expr)) {
       return expr.text;
     }
-    return `/* Unsupported expression: ${ts.SyntaxKind[expr.kind]} */`;
+    if (ts.isPrefixUnaryExpression(expr)) {
+      const operand = processExpression(expr.operand);
+      const operator = ts.tokenToString(expr.operator);
+      return `${operator}${operand}`;
+    }
+    if (ts.isPostfixUnaryExpression(expr)) {
+      const operand = processExpression(expr.operand);
+      const operator = ts.tokenToString(expr.operator);
+      return `${operand}${operator}`;
+    }
+    throw new Error(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`);
   }
 
   function tsToCudaType(typeNode: ts.TypeNode): string {
     switch (typeNode.kind) {
       case ts.SyntaxKind.NumberKeyword:
         return "float";
+      case ts.SyntaxKind.BooleanKeyword:
+        return "bool";
       case ts.SyntaxKind.StringKeyword:
         return "char*";
       default:
@@ -106,6 +163,9 @@ export function tsToCuda(code: string): {
     }
   }
 
-  visit(sourceFile);
-  return { functionName, deviceCode };
+  const result = visit(sourceFile);
+  if (!result) {
+    throw new Error("No function declaration found in the provided code.");
+  }
+  return result;
 }
