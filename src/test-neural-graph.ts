@@ -40,12 +40,13 @@ async function main() {
 
   // 5. Compile the entire graph into a single CUDA kernel.
   console.log("\nCompiling graph to a single CUDA kernel...");
-  // The compiler now infers the graph's inputs and outputs automatically.
-  const { kernel, parameters, kernelCode } = await compiler.compile(model);
+  // The compiler now returns the required workspace size for intermediate tensors.
+  const { kernel, parameters, kernelCode, workspaceSize } = await compiler.compile(model);
 
   console.log("\nCompilation complete.");
   console.log(`- Generated Kernel ID: ${kernel.id}`);
   console.log(`- Number of parameters to pass: ${parameters.length}`);
+  console.log(`- Required workspace size: ${workspaceSize} bytes`);
   
   // The `compiler.compile` method already logs the generated kernel code via
   // the MockCudaRuntime, so we can see the output in the console.
@@ -69,17 +70,50 @@ async function main() {
   await runtime.memcpyHostToDevice(d_input, Buffer.from(inputData.buffer));
 
   // 8. Launch the kernel.
-  // The arguments must now be ordered correctly: graph inputs, then graph
-  // outputs, then the collected parameters. Our simple sequential model has
-  // one input ('input') and one output ('output').
-  const allArgs = [d_input, d_output, ...parameters];
+  // The new kernel expects a flattened list of arguments for each tensor:
+  // (data_pointer, shape_pointer, dimensions). We need to prepare this.
+  const allArgs: any[] = [];
+
+  // Helper to create GPU buffers for tensor metadata
+  async function prepareTensorArgs(tensor: any) {
+      const shapeBuffer = Buffer.from(new Int32Array(tensor.shape).buffer);
+      const d_shape = await runtime.malloc(shapeBuffer.byteLength, tensor.shape, "int32");
+      await runtime.memcpyHostToDevice(d_shape, shapeBuffer);
+      // In a real implementation, the kernel launch would handle these raw values.
+      // For the mock, we pass the tensor objects themselves for clarity in logging.
+      // A real C++ bridge would flatten this to [tensor.data, d_shape, tensor.shape.length]
+      return [tensor, d_shape, tensor.shape.length];
+  }
+
+  // The argument order must match the kernel signature: inputs, outputs, then params.
+  const inputArgs = await prepareTensorArgs(d_input);
+  const outputArgs = await prepareTensorArgs(d_output);
   
-  console.log(`Launching kernel with ${allArgs.length} total arguments.`);
+  allArgs.push(...inputArgs);
+  allArgs.push(...outputArgs);
+
+  for (const param of parameters) {
+      const paramArgs = await prepareTensorArgs(param);
+      allArgs.push(...paramArgs);
+  }
+
+  console.log(`Launching kernel with ${allArgs.length} total flattened arguments.`);
+  
+  // The mock launch function doesn't use the flattened args, but a real one would.
+  // We pass the original tensors for the mock's logging to remain readable.
+  const mockLaunchArgs = [d_input, d_output, ...parameters];
+
+  if (workspaceSize > 0) {
+    console.log(`Allocating ${workspaceSize} byte workspace.`);
+    const d_workspace = await runtime.malloc(workspaceSize);
+    mockLaunchArgs.push(d_workspace);
+  }
+
   await kernel.launch(
     { x: Math.ceil(batchSize / 256), y: 1, z: 1 }, // Grid dimensions
     { x: 256, y: 1, z: 1 }, // Block dimensions
     0, // Shared memory
-    allArgs
+    mockLaunchArgs
   );
 
   console.log("\nKernel launch simulated.");

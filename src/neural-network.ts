@@ -67,13 +67,21 @@ export interface Layer {
 export class ReLULayer implements Layer {
   addToGraph(graph: NeuralGraph): CudaNode {
     const deviceCode = `
-      __device__ void relu_forward(float* out, float in) {
-        *out = fmaxf(0.0f, in);
+      __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+        int size = 1;
+        for (int i = 0; i < input.dims; ++i) {
+          size *= input.shape[i];
+        }
+        // This is a simplified loop for element-wise operation.
+        // A real implementation would use the thread index (idx).
+        for (int i = 0; i < size; ++i) {
+            output.data[i] = fmaxf(0.0f, input.data[i]);
+        }
       }
     `;
     const reluNode = new CudaNode(deviceCode, "relu_forward")
-      .addInput('input', [1], 'float32')
-      .addOutput('output', [1], 'float32');
+      .addInput('input', [-1, -1], 'float32') // Dynamic shape
+      .addOutput('output', [-1, -1], 'float32');
       
     graph.addNode(reluNode);
     return reluNode;
@@ -112,18 +120,32 @@ export class DenseLayer implements Layer {
     const weightParamName = `weights_${this.id}`;
     const biasParamName = `bias_${this.id}`;
 
-    // This device code is a simplification for a single value.
-    // A real implementation would perform a dot product.
+    // This device code implements a matrix-vector multiplication.
+    // It assumes the input is a vector (dims == 1) and weights is a matrix (dims == 2).
     const deviceCode = `
-      __device__ void dense_forward_${this.id}(float* out, float in, const float* ${weightParamName}, const float* ${biasParamName}) {
-        // Simple multiplication, not a dot product, for this example.
-        *out = in * ${weightParamName}[0] + ${biasParamName}[0];
+      __device__ void dense_forward_${this.id}(
+        Tensor<float> output, 
+        Tensor<float> input, 
+        Tensor<float> ${weightParamName}, 
+        Tensor<float> ${biasParamName}
+      ) {
+        int input_size = input.shape[0];
+        int output_size = output.shape[0];
+
+        for (int i = 0; i < output_size; ++i) {
+          float sum = 0.0f;
+          for (int j = 0; j < input_size; ++j) {
+            // W is row-major: W[i, j] is at index i * input_size + j
+            sum += input.data[j] * ${weightParamName}.data[i * input_size + j];
+          }
+          output.data[i] = sum + ${biasParamName}.data[i];
+        }
       }
     `;
 
     const denseNode = new CudaNode(deviceCode, `dense_forward_${this.id}`)
-      .addInput('input', [1], 'float32')
-      .addOutput('output', [1], 'float32')
+      .addInput('input', [this.inputFeatures], 'float32')
+      .addOutput('output', [this.outputFeatures], 'float32')
       .addParameter(weightParamName, this.weights)
       .addParameter(biasParamName, this.bias);
 

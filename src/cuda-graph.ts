@@ -17,11 +17,6 @@ import { CudaRuntime, CudaTensor, CudaKernel } from "./cuda-abstractions";
 /**
  * Represents a single, generic operation within a CudaGraph.
  * Each CudaNode holds a piece of CUDA C++ device code that will be
- * compiled into a larger kernel.
- */
-/**
- * Represents a single, generic operation within a CudaGraph.
- * Each CudaNode holds a piece of CUDA C++ device code that will be
  * compiled into a larger kernel. It now features explicit, named inputs
  * and outputs to enable complex, non-linear graph structures.
  */
@@ -34,11 +29,6 @@ export class CudaNode {
   // Holds named parameter tensors (e.g., weights, biases) for this node.
   public readonly parameters = new Map<string, CudaTensor>();
 
-  /**
-   * @param name - A descriptive name for the node.
-   * @param deviceCode - The CUDA C++ device function code for this operation.
-   * @param functionName - The name of the device function defined in the code.
-   */
   constructor(
     public readonly deviceCode: string,
     public readonly functionName: string
@@ -62,20 +52,12 @@ export class CudaNode {
     return this;
   }
 
-  /**
-   * Generates the C++ code to call this node's device function.
-   * @param outputVarNames - A map from this node's output port names to the
-   *                         actual C++ variable names they will be assigned to.
-   * @param inputVarNames - A map from this node's input port names to the
-   *                        C++ variable names of their data source.
-   * @returns The C++ code string for the function call.
-   */
   getKernelCall(
-    outputVarNames: Map<string, string>,
-    inputVarNames: Map<string, string>
+    outputTensorNames: Map<string, string>,
+    inputTensorNames: Map<string, string>
   ): string {
-    const outputArgs = Array.from(this.outputs.keys()).map(name => outputVarNames.get(name));
-    const inputArgs = Array.from(this.inputs.keys()).map(name => inputVarNames.get(name));
+    const outputArgs = Array.from(this.outputs.keys()).map(name => outputTensorNames.get(name));
+    const inputArgs = Array.from(this.inputs.keys()).map(name => inputTensorNames.get(name));
     const paramArgs = Array.from(this.parameters.keys());
 
     const allArgs = [...outputArgs, ...inputArgs, ...paramArgs].join(", ");
@@ -174,7 +156,6 @@ export class CudaGraph {
       }
     }
     
-    // Ensure all nodes were visited (handles disconnected graphs)
     for (const node of this.nodes.values()) {
         if (!visited.has(node.id)) {
             visit(node);
@@ -193,19 +174,10 @@ export class CudaGraph {
 export class CudaGraphCompiler {
   constructor(private runtime: CudaRuntime) {}
 
-  /**
-   * Compiles an entire CudaGraph into a single, executable CUDA kernel.
-   * @param graph - The CudaGraph to compile.
-   * @param entryVarName - The name of the initial input variable for the kernel.
-   * @returns A promise that resolves to an object containing the compiled kernel,
-   *          the list of parameter tensors it expects, and the generated kernel source code.
-   */
-  async compile(graph: CudaGraph): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string}> {
-    // Collect all unique parameters from the graph's nodes.
+  async compile(graph: CudaGraph): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string, workspaceSize: number}> {
     const allParams = new Map<string, CudaTensor>();
     for (const node of graph.nodes.values()) {
         for (const [name, tensor] of node.parameters) {
-            // Ensure each tensor is included only once, using its ID for uniqueness.
             if (!Array.from(allParams.values()).some(t => t.id === tensor.id)) {
                 allParams.set(name, tensor);
             }
@@ -215,103 +187,154 @@ export class CudaGraphCompiler {
     const orderedParams = Array.from(allParams.values());
     const paramNames = Array.from(allParams.keys());
 
-    const kernelCode = this.generateKernelCode(graph, paramNames);
+    const { kernelCode, workspaceSize } = this.generateKernelCode(graph, paramNames);
     const kernel = await this.runtime.compile(kernelCode);
     
-    return { kernel, parameters: orderedParams, kernelCode };
+    return { kernel, parameters: orderedParams, kernelCode, workspaceSize };
   }
 
-  /**
-   * Generates the complete CUDA C++ source code for the graph's kernel.
-   * This version uses the explicit graph connections to wire up variables.
-   * @param graph - The CudaGraph to generate code for.
-   * @param paramNames - A list of names for the kernel's parameter tensors.
-   * @returns The full CUDA C++ source code as a string.
-   */
-  generateKernelCode(graph: CudaGraph, paramNames: string[]): string {
+  generateKernelCode(graph: CudaGraph, paramNames: string[]): { kernelCode: string, workspaceSize: number } {
     const executionOrder = graph.getExecutionOrder();
     const uniqueDeviceCodes = new Set(executionOrder.map(node => node.deviceCode));
     const nodeDeviceCodes = Array.from(uniqueDeviceCodes).join("\n\n");
 
-    const varNameMap = new Map<string, string>(); // Maps `nodeId:portName` to a C++ variable name
-    const executionFlow: string[] = [];
+    const tensorRegistry = new Map<string, { varName: string, spec: { shape: number[], dtype: string } }>();
     const variableDeclarations: string[] = [];
-
-    // Identify graph inputs and outputs
-    const graphInputs = new Map<string, {node: CudaNode, port: string}>();
-    const graphOutputs = new Map<string, {node: CudaNode, port: string}>();
-    const allNodeInputs = new Set<string>(); // "nodeId:port"
-    const allNodeOutputs = new Set<string>(); // "nodeId:port"
+    
+    // --- 1. Identify Graph Inputs and Outputs & Populate Registry ---
+    const graphInputs = new Map<string, { node: CudaNode, port: string }>();
+    const graphOutputs = new Map<string, { node: CudaNode, port: string }>();
+    const allNodeInputs = new Set<string>();
+    const allNodeOutputs = new Set<string>();
 
     for (const conn of graph.connections) {
-        allNodeInputs.add(`${conn.toNode.id}:${conn.toPort}`);
-        allNodeOutputs.add(`${conn.fromNode.id}:${conn.fromPort}`);
+      allNodeInputs.add(`${conn.toNode.id}:${conn.toPort}`);
+      allNodeOutputs.add(`${conn.fromNode.id}:${conn.fromPort}`);
     }
 
     for (const node of graph.nodes.values()) {
-        for (const inputPort of node.inputs.keys()) {
-            if (!allNodeInputs.has(`${node.id}:${inputPort}`)) {
-                graphInputs.set(inputPort, { node, port: inputPort });
-            }
+      for (const [inputPort, spec] of node.inputs) {
+        if (!allNodeInputs.has(`${node.id}:${inputPort}`)) {
+          graphInputs.set(inputPort, { node, port: inputPort });
+          tensorRegistry.set(`${node.id}:${inputPort}`, { varName: inputPort, spec });
         }
-        for (const outputPort of node.outputs.keys()) {
-            if (!allNodeOutputs.has(`${node.id}:${outputPort}`)) {
-                graphOutputs.set(outputPort, { node, port: outputPort });
-            }
+      }
+      for (const [outputPort, spec] of node.outputs) {
+        if (!allNodeOutputs.has(`${node.id}:${outputPort}`)) {
+          graphOutputs.set(outputPort, { node, port: outputPort });
+          tensorRegistry.set(`${node.id}:${outputPort}`, { varName: outputPort, spec });
         }
+      }
     }
 
-    // Generate kernel signature
-    const inputParams = Array.from(graphInputs.keys()).map(name => `const float* ${name}`);
-    const outputParams = Array.from(graphOutputs.keys()).map(name => `float* ${name}`);
-    const parameterParams = paramNames.map(name => `const float* ${name}`);
-    const kernelSignatureParams = [...inputParams, ...outputParams, ...parameterParams, "int n"];
-
-    // Main loop for code generation
-    for (const node of executionOrder) {
-        const inputVarNames = new Map<string, string>();
-        const outputVarNames = new Map<string, string>();
-
-        // Map inputs of the current node
-        for (const inputPort of node.inputs.keys()) {
-            const connection = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
-            if (connection) {
-                const sourceVar = varNameMap.get(`${connection.fromNode.id}:${connection.fromPort}`);
-                if (!sourceVar) throw new Error("Topological sort failed or logic error.");
-                inputVarNames.set(inputPort, sourceVar);
-            } else {
-                // It's a graph-level input
-                inputVarNames.set(inputPort, `${inputPort}[idx]`);
-            }
-        }
-
-        // Create and map outputs of the current node
+    // --- 2. Liveness Analysis & Memory Planning ---
+    const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>();
+    executionOrder.forEach((node, i) => {
         for (const [outputPort, spec] of node.outputs) {
-            const varName = `${node.name}_${outputPort}_${node.id.substring(0, 4)}`;
-            // For now, we assume intermediate values are scalar floats.
-            // This is where a memory planner would allocate from a workspace.
-            variableDeclarations.push(`float ${varName};`);
-            outputVarNames.set(outputPort, `&${varName}`); // Pass address to device func
-            varNameMap.set(`${node.id}:${outputPort}`, varName);
+            const key = `${node.id}:${outputPort}`;
+            if (!tensorRegistry.has(key)) { // It's an intermediate tensor
+                const size = spec.shape.reduce((a, b) => a * b, 1) * 4; // size in bytes
+                intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 }); // liveEnd starts at i
+            }
         }
+        for (const [inputPort] of node.inputs) {
+            const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
+            if (conn) {
+                const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
+                if (intermediateTensors.has(sourceKey)) {
+                    intermediateTensors.get(sourceKey)!.liveEnd = i;
+                }
+            }
+        }
+    });
 
-        // The generated device functions are now expected to take pointers for outputs
-        const call = node.getKernelCall(outputVarNames, inputVarNames);
-        executionFlow.push(`  // Node: ${node.name}`);
-        executionFlow.push(`  ${call}`);
+    let workspaceSize = 0;
+    const blocks: {start: number, end: number, size: number}[] = [];
+    const sortedTensors = Array.from(intermediateTensors.entries()).sort((a, b) => a[1].liveStart - b[1].liveStart);
+
+    for (const [key, tensor] of sortedTensors) {
+        let placed = false;
+        for (const block of blocks) {
+            if (tensor.liveStart >= block.end && tensor.size <= block.size) {
+                tensor.offset = block.start;
+                block.end = tensor.liveEnd;
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            tensor.offset = workspaceSize;
+            workspaceSize += tensor.size;
+            blocks.push({start: tensor.offset, end: tensor.liveEnd, size: tensor.size});
+        }
     }
 
-    // Assign final results to graph outputs
-    for (const [name, {node, port}] of graphOutputs) {
-        const finalVar = varNameMap.get(`${node.id}:${port}`);
-        if (finalVar) {
-            executionFlow.push(`  ${name}[idx] = ${finalVar};`);
-        }
+    // --- 3. Build Final Kernel Code ---
+    const tensorStruct = `
+template<typename T>
+struct Tensor {
+  T* data;
+  const int* shape;
+  int dims;
+};
+`;
+    const tensorInstantiations: string[] = [];
+    
+    // Register and create instantiations for intermediate tensors
+    let intermediateIdx = 0;
+    for (const [key, tensorInfo] of intermediateTensors.entries()) {
+        const varName = `intermediate_${intermediateIdx}`;
+        const shapeVar = `${varName}_shape`;
+        const tensorVar = `${varName}_tensor`;
+        variableDeclarations.push(`  const int ${shapeVar}[] = {${tensorInfo.spec.shape.join(', ')}};`);
+        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {(float*)(workspace + ${tensorInfo.offset}), ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+        tensorRegistry.set(key, { varName: tensorVar, spec: tensorInfo.spec });
+        intermediateIdx++;
     }
 
-    return `
+    // Create instantiations for graph I/O and parameters
+    const allGraphTensors = [...graphInputs.keys(), ...graphOutputs.keys(), ...paramNames];
+    for (const name of allGraphTensors) {
+        tensorInstantiations.push(`  Tensor<float> ${name} = {${name}_data, ${name}_shape, ${name}_dims};`);
+    }
+
+    // --- 4. Generate Execution Flow ---
+    const executionFlow: string[] = [];
+    for (const node of executionOrder) {
+      const inputTensors = new Map<string, string>();
+      const outputTensors = new Map<string, string>();
+
+      for (const [inputPort] of node.inputs) {
+        const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
+        const sourceKey = conn ? `${conn.fromNode.id}:${conn.fromPort}` : `${node.id}:${inputPort}`;
+        const tensorInfo = tensorRegistry.get(sourceKey);
+        if (!tensorInfo) throw new Error(`Compiler error: Could not find source tensor for ${node.name}:${inputPort}`);
+        inputTensors.set(inputPort, tensorInfo.varName);
+      }
+
+      for (const [outputPort] of node.outputs) {
+        const key = `${node.id}:${outputPort}`;
+        const tensorInfo = tensorRegistry.get(key);
+        if (!tensorInfo) throw new Error(`Compiler error: Could not find output tensor for ${node.name}:${outputPort}`);
+        outputTensors.set(outputPort, tensorInfo.varName);
+      }
+      
+      const call = node.getKernelCall(outputTensors, inputTensors);
+      executionFlow.push(`  ${call}`);
+    }
+
+    // --- 5. Assemble Final Kernel ---
+    const getTensorParams = (name: string) => [`float* ${name}_data`, `const int* ${name}_shape`, `int ${name}_dims`];
+    const inputParams = Array.from(graphInputs.keys()).flatMap(getTensorParams);
+    const outputParams = Array.from(graphOutputs.keys()).flatMap(getTensorParams);
+    const parameterParams = paramNames.flatMap(getTensorParams);
+    const kernelSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
+
+    const kernelCode = `
 #include <cuda_runtime.h>
 #include <math.h>
+
+${tensorStruct}
 
 // ======================================================
 // Node Device Functions
@@ -324,16 +347,21 @@ ${nodeDeviceCodes}
 extern "C" __global__ void executeGraph(
   ${kernelSignatureParams.join(",\n  ")}
 ) {
+  // TODO: Implement tensor-based indexing
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= n) return;
 
   // --- Variable Declarations ---
-  ${variableDeclarations.join("\n  ")}
+${variableDeclarations.join("\n")}
+
+  // --- Tensor Struct Instantiation ---
+${tensorInstantiations.join("\n")}
 
   // --- Generated Execution Flow ---
-${executionFlow.join("\n")}
+  ${executionFlow.join("\n  ")}
   // --- End Execution Flow ---
 }
     `;
+
+    return { kernelCode, workspaceSize };
   }
 }
