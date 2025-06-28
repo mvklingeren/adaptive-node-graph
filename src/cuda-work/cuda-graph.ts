@@ -267,6 +267,9 @@ export class CudaGraphCompiler {
 
   generateKernelCode(graph: CudaGraph, paramNames: string[]): { kernelCode: string, workspaceSize: number } {
     const executionOrder = graph.getExecutionOrder();
+    for (const node of executionOrder) {
+      node.resolveShapes();
+    }
     const uniqueDeviceCodes = new Set(executionOrder.map(node => node.deviceCode));
     const nodeDeviceCodes = Array.from(uniqueDeviceCodes).join("\n\n");
 

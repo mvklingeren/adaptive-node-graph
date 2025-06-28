@@ -8,7 +8,68 @@
 // ============================================================================
 
 import { CudaNode } from "./cuda-graph.js";
+import { tsToCuda } from "./ts-to-cuda.js";
+import * as ts from "typescript";
 
+// ============================================================================
+// Custom CUDA Node from TypeScript
+// ============================================================================
+
+export class CustomCudaNode extends CudaNode {
+  private readonly tsCode: string;
+
+  constructor(tsCode: string) {
+    const { functionName, deviceCode } = tsToCuda(tsCode);
+    super(deviceCode, functionName);
+    this.name = functionName;
+    this.tsCode = tsCode;
+    this.extractInputsAndOutputs();
+
+    this.setShapeResolver((inputs) => {
+      const resolvedShapes = new Map<string, { shape: number[] }>();
+      const firstInput = inputs.values().next().value;
+      if (firstInput) {
+        for (const outputName of this.outputs.keys()) {
+          resolvedShapes.set(outputName, { shape: firstInput.shape });
+        }
+      }
+      return resolvedShapes;
+    });
+  }
+
+  private extractInputsAndOutputs(): void {
+    const sourceFile = ts.createSourceFile(
+      "temp.ts",
+      this.tsCode,
+      ts.ScriptTarget.Latest,
+      true
+    );
+
+    const visit = (node: ts.Node) => {
+      if (ts.isFunctionDeclaration(node)) {
+        const params = node.parameters;
+        if (params.length > 0) {
+          // All but the last are inputs
+          for (let i = 0; i < params.length - 1; i++) {
+            const p = params[i];
+            const name = p.name.getText(sourceFile);
+            this.addInput(name, [-1], "float32");
+          }
+          // Last one is output
+          const outputParam = params[params.length - 1];
+          const outputName = outputParam.name.getText(sourceFile);
+          this.addOutput(outputName, [-1], "float32");
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+
+    visit(sourceFile);
+  }
+}
+
+// ============================================================================
+// Element-wise Add Node
 // ============================================================================
 // Element-wise Add Node
 // ============================================================================
