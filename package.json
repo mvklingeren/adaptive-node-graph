@@ -24,9 +24,10 @@
     "test-complex": "esbuild src/test-complex.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-complex.js --external:pino && node dist/test-complex.js",
     "test-neural-graph": "npm run clean && esbuild src/cuda-work/test-neural-graph.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-neural-graph.js --external:pino && node dist/test-neural-graph.js",
     "test-custom-node": "npm run clean && esbuild src/cuda-work/test-custom-node.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-custom-node.js --external:pino --external:typescript && node dist/test-custom-node.js",
+    "test-ts-to-cuda": "esbuild src/cuda-work/test-ts-to-cuda.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-ts-to-cuda.js --external:pino --external:typescript && node dist/test-ts-to-cuda.js",
     "compile:cuda": "npm run test-neural-graph &&./compile-and-extract.sh",
     "clean": "rm -rf dist",
-    "test": "npm run test-basics && npm run test-improvements && npm run test-complex && npm run test-neural-graph && npm run test-custom-node"
+    "test": "npm run test-basics && npm run test-improvements && npm run test-complex && npm run test-neural-graph && npm run test-custom-node",
   },
   "author": "mvklingeren",
   "license": "MIT",
