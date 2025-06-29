@@ -25,7 +25,7 @@ export class ScaledDotProductAttention implements Layer {
 
     // Instantiate layers for the attention mechanism
     const matmul_qk = new BatchedMatMul(true); // Transpose K for QK^T
-    const scaleLayer = new ScaleLayer(scale);
+    const scaleLayer = new ScaleLayer(this.runtime, scale);
     const softmaxLayer = new SoftmaxLayer();
     const matmul_sv = new BatchedMatMul(false); // No transpose for SV
 
@@ -40,7 +40,7 @@ export class ScaledDotProductAttention implements Layer {
 }
 
 export class ScaleLayer implements Layer {
-  constructor(private scale: number) {}
+  constructor(private runtime: CudaRuntime, private scale: number) {}
 
   addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
     const deviceCode = `
@@ -52,7 +52,7 @@ export class ScaleLayer implements Layer {
         int size = input.shape[0] * input.shape[1] * input.shape[2] * input.shape[3];
         
         for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            output.data[i] = input.data[i] * ${this.scale};
+            output.data[i] = input.data[i] * ${this.scale}f;
         }
       }
     `;

@@ -250,12 +250,41 @@ export class CudaGraphCompiler {
   constructor(private runtime: CudaRuntime) {}
 
   async compile(graph: CudaGraph, inputShapes: Map<string, number[]>): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string, workspaceSize: number}> {
+    // Create unique parameter names for each tensor to avoid conflicts
     const allParams = new Map<string, CudaTensor>();
+    const paramNameMapping = new Map<string, string>(); // Maps node parameter names to unique global names
+    let paramCounter = 0;
+    
     for (const node of graph.nodes.values()) {
-        for (const [name, tensor] of node.parameters) {
-            if (!Array.from(allParams.values()).some(t => t.id === tensor.id)) {
-                allParams.set(name, tensor);
+        if (!node || !node.id) {
+            console.warn('Skipping invalid node in parameter mapping');
+            continue;
+        }
+        
+        for (const [localParamName, tensor] of node.parameters) {
+            if (!tensor || !tensor.id) {
+                console.warn(`Skipping invalid tensor '${localParamName}' in node '${node.name}'`);
+                continue;
             }
+            
+            // Check if we've already seen this tensor (by ID)
+            let globalParamName = null;
+            for (const [existingName, existingTensor] of allParams.entries()) {
+                if (existingTensor && existingTensor.id === tensor.id) {
+                    globalParamName = existingName;
+                    break;
+                }
+            }
+            
+            // If this is a new tensor, create a unique global name
+            if (!globalParamName) {
+                globalParamName = `param_${paramCounter++}_${localParamName}`;
+                allParams.set(globalParamName, tensor);
+            }
+            
+            // Map the node's local parameter name to the global name
+            const nodeParamKey = `${node.id}:${localParamName}`;
+            paramNameMapping.set(nodeParamKey, globalParamName);
         }
     }
     
@@ -264,7 +293,7 @@ export class CudaGraphCompiler {
 
     this._setAndPropagateShapes(graph, inputShapes);
 
-    const { kernelCode, workspaceSize } = this.generateKernelCode(graph, paramNames);
+    const { kernelCode, workspaceSize } = this.generateKernelCode(graph, paramNames, paramNameMapping);
     const kernel = await this.runtime.compile(kernelCode); 
     
     return { kernel, parameters: orderedParams, kernelCode, workspaceSize };
@@ -354,7 +383,7 @@ export class CudaGraphCompiler {
     }
 }
 
-  generateKernelCode(graph: CudaGraph, paramNames: string[]): { kernelCode: string, workspaceSize: number } {
+  generateKernelCode(graph: CudaGraph, paramNames: string[], paramNameMapping: Map<string, string>): { kernelCode: string, workspaceSize: number } {
     const executionOrder = graph.getExecutionOrder();
     
     const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
@@ -402,10 +431,20 @@ export class CudaGraphCompiler {
             inputTensors.set(inputPort, tensorInfo.varName);
         }
 
+        // Map node parameter names to unique global parameter names
+        const paramArgs = Array.from(node.parameters.keys()).map(localParamName => {
+            const nodeParamKey = `${node.id}:${localParamName}`;
+            const globalParamName = paramNameMapping.get(nodeParamKey);
+            if (!globalParamName) {
+                throw new Error(`Compiler Error: Could not find global parameter name for ${node.name}:${localParamName}`);
+            }
+            return globalParamName;
+        });
+
         const kernelArgs = [
             ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
             ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
-            ...Array.from(node.parameters.keys())
+            ...paramArgs
         ].join(', ');
 
         // Calculate optimal grid and block dimensions based on tensor shapes and kernel type
@@ -419,10 +458,18 @@ export class CudaGraphCompiler {
     const graphInputs = graph.getGraphInputs();
     const graphOutputs = this.getGraphOutputs(graph);
     
-    const getTensorParams = (name: string) => [`float* ${name}_data`, `const int* ${name}_shape`, `int ${name}_dims`];
-    const inputParams = Array.from(graphInputs.keys()).flatMap(getTensorParams);
-    const outputParams = Array.from(graphOutputs.keys()).flatMap(getTensorParams);
-    const parameterParams = paramNames.flatMap(getTensorParams);
+    // Generate proper parameter types based on tensor data types
+    const getTensorParams = (name: string, dtype: string = "float32") => {
+        const dataType = dtype === "int32" ? "int" : "float";
+        return [`${dataType}* ${name}_data`, `const int* ${name}_shape`, `int ${name}_dims`];
+    };
+    
+    const inputParams = Array.from(graphInputs.entries()).flatMap(([name, { node, port }]) => {
+        const inputSpec = node.inputs.get(port)!;
+        return getTensorParams(name, inputSpec.dtype);
+    });
+    const outputParams = Array.from(graphOutputs.keys()).flatMap(name => getTensorParams(name, "float32"));
+    const parameterParams = paramNames.flatMap(name => getTensorParams(name, "float32"));
     const hostFunctionSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
 
     const tensorStruct = `
@@ -504,9 +551,22 @@ struct Tensor {
         intermediateIdx++;
     }
 
-    const allGraphTensors = [...graphInputs.keys(), ...graphOutputs.keys(), ...paramNames];
-    for (const name of allGraphTensors) {
-        tensorInstantiations.push(`  Tensor<float> ${name} = {${name}_data, ${name}_shape, ${name}_dims};`);
+    // Create tensor instantiations for graph inputs (with proper type handling)
+    for (const [inputName, { node, port }] of graphInputs.entries()) {
+        const inputSpec = node.inputs.get(port)!;
+        const tensorType = inputSpec.dtype === "int32" ? "int" : "float";
+        const dataType = inputSpec.dtype === "int32" ? "int" : "float";
+        tensorInstantiations.push(`  Tensor<${tensorType}> ${inputName} = {(${dataType}*)${inputName}_data, ${inputName}_shape, ${inputName}_dims};`);
+    }
+    
+    // Create tensor instantiations for graph outputs (always float for now)
+    for (const outputName of graphOutputs.keys()) {
+        tensorInstantiations.push(`  Tensor<float> ${outputName} = {${outputName}_data, ${outputName}_shape, ${outputName}_dims};`);
+    }
+    
+    // Create tensor instantiations for parameters (always float for now)
+    for (const paramName of paramNames) {
+        tensorInstantiations.push(`  Tensor<float> ${paramName} = {${paramName}_data, ${paramName}_shape, ${paramName}_dims};`);
     }
 
     const kernelCode = `

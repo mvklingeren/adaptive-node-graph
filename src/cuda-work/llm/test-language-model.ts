@@ -44,7 +44,7 @@ async function main() {
 
   console.log("\nCompiling graph to a single CUDA kernel...");
   const { kernel, parameters, kernelCode, workspaceSize } =
-    await compiler.compile(model, inputShapes);
+    await compiler.compile(model as any, inputShapes);
 
   console.log("\nCompilation complete.");
   console.log(`- Generated Kernel ID: ${kernel.id}`);

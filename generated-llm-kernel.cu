@@ -192,7 +192,7 @@ struct Tensor {
         int size = input.shape[0] * input.shape[1] * input.shape[2] * input.shape[3];
         
         for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            output.data[i] = input.data[i] * 0.17677669529663687;
+            output.data[i] = input.data[i] * 0.17677669529663687f;
         }
       }
     
@@ -437,27 +437,117 @@ struct Tensor {
 // Main Host-Side Execution Function
 // ======================================================
 extern "C" void executeGraph(
-  float* input_data,
+  int* input_data,
   const int* input_shape,
   int input_dims,
   float* output_data,
   const int* output_shape,
   int output_dims,
-  float* embeddings_data,
-  const int* embeddings_shape,
-  int embeddings_dims,
-  float* weights_data,
-  const int* weights_shape,
-  int weights_dims,
-  float* bias_data,
-  const int* bias_shape,
-  int bias_dims,
-  float* gamma_data,
-  const int* gamma_shape,
-  int gamma_dims,
-  float* beta_data,
-  const int* beta_shape,
-  int beta_dims,
+  float* param_0_embeddings_data,
+  const int* param_0_embeddings_shape,
+  int param_0_embeddings_dims,
+  float* param_1_weights_data,
+  const int* param_1_weights_shape,
+  int param_1_weights_dims,
+  float* param_2_bias_data,
+  const int* param_2_bias_shape,
+  int param_2_bias_dims,
+  float* param_3_weights_data,
+  const int* param_3_weights_shape,
+  int param_3_weights_dims,
+  float* param_4_bias_data,
+  const int* param_4_bias_shape,
+  int param_4_bias_dims,
+  float* param_5_weights_data,
+  const int* param_5_weights_shape,
+  int param_5_weights_dims,
+  float* param_6_bias_data,
+  const int* param_6_bias_shape,
+  int param_6_bias_dims,
+  float* param_7_weights_data,
+  const int* param_7_weights_shape,
+  int param_7_weights_dims,
+  float* param_8_bias_data,
+  const int* param_8_bias_shape,
+  int param_8_bias_dims,
+  float* param_9_gamma_data,
+  const int* param_9_gamma_shape,
+  int param_9_gamma_dims,
+  float* param_10_beta_data,
+  const int* param_10_beta_shape,
+  int param_10_beta_dims,
+  float* param_11_weights_data,
+  const int* param_11_weights_shape,
+  int param_11_weights_dims,
+  float* param_12_bias_data,
+  const int* param_12_bias_shape,
+  int param_12_bias_dims,
+  float* param_13_weights_data,
+  const int* param_13_weights_shape,
+  int param_13_weights_dims,
+  float* param_14_bias_data,
+  const int* param_14_bias_shape,
+  int param_14_bias_dims,
+  float* param_15_gamma_data,
+  const int* param_15_gamma_shape,
+  int param_15_gamma_dims,
+  float* param_16_beta_data,
+  const int* param_16_beta_shape,
+  int param_16_beta_dims,
+  float* param_17_weights_data,
+  const int* param_17_weights_shape,
+  int param_17_weights_dims,
+  float* param_18_bias_data,
+  const int* param_18_bias_shape,
+  int param_18_bias_dims,
+  float* param_19_weights_data,
+  const int* param_19_weights_shape,
+  int param_19_weights_dims,
+  float* param_20_bias_data,
+  const int* param_20_bias_shape,
+  int param_20_bias_dims,
+  float* param_21_weights_data,
+  const int* param_21_weights_shape,
+  int param_21_weights_dims,
+  float* param_22_bias_data,
+  const int* param_22_bias_shape,
+  int param_22_bias_dims,
+  float* param_23_weights_data,
+  const int* param_23_weights_shape,
+  int param_23_weights_dims,
+  float* param_24_bias_data,
+  const int* param_24_bias_shape,
+  int param_24_bias_dims,
+  float* param_25_gamma_data,
+  const int* param_25_gamma_shape,
+  int param_25_gamma_dims,
+  float* param_26_beta_data,
+  const int* param_26_beta_shape,
+  int param_26_beta_dims,
+  float* param_27_weights_data,
+  const int* param_27_weights_shape,
+  int param_27_weights_dims,
+  float* param_28_bias_data,
+  const int* param_28_bias_shape,
+  int param_28_bias_dims,
+  float* param_29_weights_data,
+  const int* param_29_weights_shape,
+  int param_29_weights_dims,
+  float* param_30_bias_data,
+  const int* param_30_bias_shape,
+  int param_30_bias_dims,
+  float* param_31_gamma_data,
+  const int* param_31_gamma_shape,
+  int param_31_gamma_dims,
+  float* param_32_beta_data,
+  const int* param_32_beta_shape,
+  int param_32_beta_dims,
+  float* param_33_weights_data,
+  const int* param_33_weights_shape,
+  int param_33_weights_dims,
+  float* param_34_bias_data,
+  const int* param_34_bias_shape,
+  int param_34_bias_dims,
   char* workspace
 ) {
   // --- Variable Declarations ---
@@ -545,24 +635,54 @@ extern "C" void executeGraph(
   Tensor<float> intermediate_38_tensor = {(float*)(workspace + 394240), intermediate_38_shape, 3};
   Tensor<float> intermediate_39_tensor = {(float*)(workspace + 0), intermediate_39_shape, 3};
   Tensor<float> intermediate_40_tensor = {(float*)(workspace + 131072), intermediate_40_shape, 2};
-  Tensor<float> input = {input_data, input_shape, input_dims};
+  Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
-  Tensor<float> embeddings = {embeddings_data, embeddings_shape, embeddings_dims};
-  Tensor<float> weights = {weights_data, weights_shape, weights_dims};
-  Tensor<float> bias = {bias_data, bias_shape, bias_dims};
-  Tensor<float> gamma = {gamma_data, gamma_shape, gamma_dims};
-  Tensor<float> beta = {beta_data, beta_shape, beta_dims};
+  Tensor<float> param_0_embeddings = {param_0_embeddings_data, param_0_embeddings_shape, param_0_embeddings_dims};
+  Tensor<float> param_1_weights = {param_1_weights_data, param_1_weights_shape, param_1_weights_dims};
+  Tensor<float> param_2_bias = {param_2_bias_data, param_2_bias_shape, param_2_bias_dims};
+  Tensor<float> param_3_weights = {param_3_weights_data, param_3_weights_shape, param_3_weights_dims};
+  Tensor<float> param_4_bias = {param_4_bias_data, param_4_bias_shape, param_4_bias_dims};
+  Tensor<float> param_5_weights = {param_5_weights_data, param_5_weights_shape, param_5_weights_dims};
+  Tensor<float> param_6_bias = {param_6_bias_data, param_6_bias_shape, param_6_bias_dims};
+  Tensor<float> param_7_weights = {param_7_weights_data, param_7_weights_shape, param_7_weights_dims};
+  Tensor<float> param_8_bias = {param_8_bias_data, param_8_bias_shape, param_8_bias_dims};
+  Tensor<float> param_9_gamma = {param_9_gamma_data, param_9_gamma_shape, param_9_gamma_dims};
+  Tensor<float> param_10_beta = {param_10_beta_data, param_10_beta_shape, param_10_beta_dims};
+  Tensor<float> param_11_weights = {param_11_weights_data, param_11_weights_shape, param_11_weights_dims};
+  Tensor<float> param_12_bias = {param_12_bias_data, param_12_bias_shape, param_12_bias_dims};
+  Tensor<float> param_13_weights = {param_13_weights_data, param_13_weights_shape, param_13_weights_dims};
+  Tensor<float> param_14_bias = {param_14_bias_data, param_14_bias_shape, param_14_bias_dims};
+  Tensor<float> param_15_gamma = {param_15_gamma_data, param_15_gamma_shape, param_15_gamma_dims};
+  Tensor<float> param_16_beta = {param_16_beta_data, param_16_beta_shape, param_16_beta_dims};
+  Tensor<float> param_17_weights = {param_17_weights_data, param_17_weights_shape, param_17_weights_dims};
+  Tensor<float> param_18_bias = {param_18_bias_data, param_18_bias_shape, param_18_bias_dims};
+  Tensor<float> param_19_weights = {param_19_weights_data, param_19_weights_shape, param_19_weights_dims};
+  Tensor<float> param_20_bias = {param_20_bias_data, param_20_bias_shape, param_20_bias_dims};
+  Tensor<float> param_21_weights = {param_21_weights_data, param_21_weights_shape, param_21_weights_dims};
+  Tensor<float> param_22_bias = {param_22_bias_data, param_22_bias_shape, param_22_bias_dims};
+  Tensor<float> param_23_weights = {param_23_weights_data, param_23_weights_shape, param_23_weights_dims};
+  Tensor<float> param_24_bias = {param_24_bias_data, param_24_bias_shape, param_24_bias_dims};
+  Tensor<float> param_25_gamma = {param_25_gamma_data, param_25_gamma_shape, param_25_gamma_dims};
+  Tensor<float> param_26_beta = {param_26_beta_data, param_26_beta_shape, param_26_beta_dims};
+  Tensor<float> param_27_weights = {param_27_weights_data, param_27_weights_shape, param_27_weights_dims};
+  Tensor<float> param_28_bias = {param_28_bias_data, param_28_bias_shape, param_28_bias_dims};
+  Tensor<float> param_29_weights = {param_29_weights_data, param_29_weights_shape, param_29_weights_dims};
+  Tensor<float> param_30_bias = {param_30_bias_data, param_30_bias_shape, param_30_bias_dims};
+  Tensor<float> param_31_gamma = {param_31_gamma_data, param_31_gamma_shape, param_31_gamma_dims};
+  Tensor<float> param_32_beta = {param_32_beta_data, param_32_beta_shape, param_32_beta_dims};
+  Tensor<float> param_33_weights = {param_33_weights_data, param_33_weights_shape, param_33_weights_dims};
+  Tensor<float> param_34_bias = {param_34_bias_data, param_34_bias_shape, param_34_bias_dims};
 
   // --- Kernel Launch Sequence ---
-  embedding_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_0_tensor, input, embeddings);
+  embedding_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_0_tensor, input, param_0_embeddings);
   CUDA_CHECK(cudaGetLastError());
   positional_encoding_forward<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, param_1_weights, param_2_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, param_3_weights, param_4_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, param_5_weights, param_6_bias);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -580,27 +700,27 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, param_7_weights, param_8_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, param_9_gamma, param_10_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_11_weights, param_12_bias);
   CUDA_CHECK(cudaGetLastError());
   relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, param_13_weights, param_14_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, param_15_gamma, param_16_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, param_17_weights, param_18_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, param_19_weights, param_20_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, param_21_weights, param_22_bias);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -618,23 +738,23 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, param_23_weights, param_24_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, param_25_gamma, param_26_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_27_weights, param_28_bias);
   CUDA_CHECK(cudaGetLastError());
   relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, param_29_weights, param_30_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, param_31_gamma, param_32_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, param_33_weights, param_34_bias);
   CUDA_CHECK(cudaGetLastError());
   softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 1024>>>(output, intermediate_40_tensor);
   CUDA_CHECK(cudaGetLastError());
