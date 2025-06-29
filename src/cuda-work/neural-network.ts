@@ -77,12 +77,13 @@ export class ReLULayer implements Layer {
     const deviceCode = `
       /**
        * @cuda global
-       * Optimized ReLU kernel with precomputed size to avoid redundant calculations
+       * Optimized ReLU kernel that calculates size dynamically
        */
-      __global__ void relu_forward(Tensor<float> output, Tensor<float> input, int total_elements) {
+      __global__ void relu_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        int total_elements = input.total_elements();
         if (idx < total_elements) {
-          output(idx) = fmaxf(0.0f, input(idx));
+          output.data[idx] = fmaxf(0.0f, input.data[idx]);
         }
       }
     `;

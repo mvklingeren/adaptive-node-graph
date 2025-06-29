@@ -441,24 +441,12 @@ export class CudaGraphCompiler {
             return globalParamName;
         });
 
-        // Special handling for ReLU kernel which needs total_elements parameter
-        let kernelArgs: string;
-        if (node.functionName === 'relu_forward') {
-            const primaryOutput = Array.from(node.outputs.values())[0];
-            const totalElements = primaryOutput.shape.reduce((a, b) => a * b, 1);
-            kernelArgs = [
-                ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
-                ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
-                ...paramArgs,
-                totalElements.toString()
-            ].join(', ');
-        } else {
-            kernelArgs = [
-                ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
-                ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
-                ...paramArgs
-            ].join(', ');
-        }
+        // Standard kernel argument ordering: outputs, inputs, parameters
+        const kernelArgs = [
+            ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
+            ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
+            ...paramArgs
+        ].join(', ');
 
         // Calculate optimal grid and block dimensions based on tensor shapes and kernel type
         const { gridDim, blockDim } = this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
