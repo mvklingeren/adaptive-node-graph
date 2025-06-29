@@ -104,7 +104,8 @@ export class ReLULayer implements Layer {
 /**
  * A fully connected (dense) layer.
  * f(x) = Wx + b
- * This layer now creates a node that points to a single, reusable __global__ kernel.
+ * This layer is now context-aware and generates the correct kernel
+ * based on the input tensor's dimensionality (2D or 3D).
  */
 export class DenseLayer implements Layer {
   private weights!: CudaTensor;
@@ -125,46 +126,104 @@ export class DenseLayer implements Layer {
   }
 
   addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
-    // This device code implements a generic, batched matrix-vector multiplication.
-    // It's designed to be a __global__ kernel, not a __device__ function.
-    const deviceCode = `
+    const inputNode = inputs[0];
+    if (!inputNode) {
+      throw new Error("DenseLayer requires at least one input node.");
+    }
+    
+    // This is a simplification. In a real graph, we'd need a more robust
+    // way to get the output port that connects to this layer.
+    const inputShape = inputNode.outputs.get('output')!.shape;
+    const is3D = inputShape.length === 3;
+
+    let deviceCode: string;
+    let functionName: string;
+    let denseNode: CudaNode;
+
+    if (is3D) {
+      // --- 3D Kernel for [batch, seq, features] tensors ---
+      functionName = 'dense_forward_3d';
+      deviceCode = `
       /**
        * @cuda global
+       * Performs a dense layer transformation on a 3D tensor.
+       * Input: [batch, seq_len, input_features]
+       * Output: [batch, seq_len, output_features]
        */
-      __global__ void dense_forward(
+      __global__ void ${functionName}(
         Tensor<float> output, 
         Tensor<float> input, 
         Tensor<float> weights, 
         Tensor<float> bias
       ) {
-        // Each thread computes one output element.
-        // Grid: (output_features / threads_per_block, batch_size)
-        // Block: (threads_per_block)
+        int batch_idx = blockIdx.z;
+        int seq_idx = blockIdx.y;
+        int output_feature_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (batch_idx < output.shape[0] && seq_idx < output.shape[1] && output_feature_idx < output.shape[2]) {
+          float sum = 0.0f;
+          for (int k = 0; k < input.shape[2]; ++k) { // Iterate over input_features
+            sum += input(batch_idx, seq_idx, k) * weights(k, output_feature_idx);
+          }
+          output(batch_idx, seq_idx, output_feature_idx) = sum + bias(output_feature_idx);
+        }
+      }
+      `;
+      
+      denseNode = new CudaNode(deviceCode, functionName)
+        .addInput('input', [-1, -1, this.inputFeatures], 'float32')
+        .addOutput('output', [-1, -1, this.outputFeatures], 'float32')
+        .addParameter('weights', this.weights)
+        .addParameter('bias', this.bias)
+        .setShapeResolver(inputs => {
+          const inputShape = inputs.get('input')!.shape;
+          const [batchSize, seqLen] = inputShape;
+          return new Map([['output', { shape: [batchSize, seqLen, this.outputFeatures] }]]);
+        });
+
+    } else {
+      // --- Original 2D Kernel for [batch, features] tensors ---
+      functionName = 'dense_forward_2d';
+      deviceCode = `
+      /**
+       * @cuda global
+       * Performs a dense layer transformation on a 2D tensor.
+       * Input: [batch, input_features]
+       * Output: [batch, output_features]
+       */
+      __global__ void ${functionName}(
+        Tensor<float> output, 
+        Tensor<float> input, 
+        Tensor<float> weights, 
+        Tensor<float> bias
+      ) {
         int batch_idx = blockIdx.y;
         int output_feature_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (batch_idx < input.shape[0] && output_feature_idx < output.shape[1]) {
           float sum = 0.0f;
-          for (int k = 0; k < input.shape[1]; ++k) {
+          for (int k = 0; k < input.shape[1]; ++k) { // Iterate over input_features
             sum += input(batch_idx, k) * weights(k, output_feature_idx);
           }
           output(batch_idx, output_feature_idx) = sum + bias(output_feature_idx);
         }
       }
-    `;
-
-    const denseNode = new CudaNode(deviceCode, `dense_forward`)
-      .addInput('input', [-1, this.inputFeatures], 'float32')
-      .addOutput('output', [-1, this.outputFeatures], 'float32')
-      // Use standardized parameter names for the reusable kernel
-      .addParameter('weights', this.weights)
-      .addParameter('bias', this.bias)
-      .setShapeResolver(inputs => {
-        const inputShape = inputs.get('input')!.shape;
-        const batchSize = inputShape[0]; // Preserve batch size
-        return new Map([['output', { shape: [batchSize, this.outputFeatures] }]]);
-      });
-
+      `;
+      
+      denseNode = new CudaNode(deviceCode, functionName)
+        .addInput('input', [-1, this.inputFeatures], 'float32')
+        .addOutput('output', [-1, this.outputFeatures], 'float32')
+        .addParameter('weights', this.weights)
+        .addParameter('bias', this.bias)
+        .setShapeResolver(inputs => {
+          const inputShape = inputs.get('input')!.shape;
+          const batchSize = inputShape[0];
+          return new Map([['output', { shape: [batchSize, this.outputFeatures] }]]);
+        });
+    }
+    
+    // Rename the node for clarity in the compiled graph
+    denseNode.name = functionName;
     graph.addNode(denseNode);
     return denseNode;
   }

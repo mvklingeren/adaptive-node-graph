@@ -804,31 +804,34 @@ ${executionCalls.join("\n")}
         }
         break;
 
-      case 'dense_forward':
+      case 'dense_forward_2d':
         // Grid: (div_ceil(output_features, block_size), batch_size)
-        if (shape.length >= 2) {
+        if (shape.length === 2) {
           const batchSize = shape[0];
-          const outputFeatures = shape[shape.length - 1]; // Last dimension
+          const outputFeatures = shape[1];
           const blockSize = 256;
-          let gridX = Math.ceil(outputFeatures / blockSize);
-          
-          // Ensure minimum grid utilization - at least 4 blocks for small tensors
-          if (gridX < 4 && outputFeatures > 32) {
-            const smallerBlockSize = Math.max(32, Math.ceil(outputFeatures / 4));
-            const alignedBlockSize = Math.ceil(smallerBlockSize / 32) * 32;
-            gridX = Math.ceil(outputFeatures / alignedBlockSize);
-            return {
-              gridDim: `dim3(${gridX}, ${batchSize})`,
-              blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
-              sharedMemSize: 0
-            };
-          }
-          
+          const gridX = Math.ceil(outputFeatures / blockSize);
           return {
             gridDim: `dim3(${Math.max(gridX, 1)}, ${batchSize})`,
             blockDim: `dim3(${blockSize}, 1, 1)`,
             sharedMemSize: 0
           };
+        }
+        break;
+
+      case 'dense_forward_3d':
+        // Grid: (div_ceil(output_features, block_size), seq_len, batch_size)
+        if (shape.length === 3) {
+            const batchSize = shape[0];
+            const seqLen = shape[1];
+            const outputFeatures = shape[2];
+            const blockSize = 256;
+            const gridX = Math.ceil(outputFeatures / blockSize);
+            return {
+                gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
+                blockDim: `dim3(${blockSize}, 1, 1)`,
+                sharedMemSize: 0
+            };
         }
         break;
 
