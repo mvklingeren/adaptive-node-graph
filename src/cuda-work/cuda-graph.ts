@@ -441,11 +441,24 @@ export class CudaGraphCompiler {
             return globalParamName;
         });
 
-        const kernelArgs = [
-            ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
-            ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
-            ...paramArgs
-        ].join(', ');
+        // Special handling for ReLU kernel which needs total_elements parameter
+        let kernelArgs: string;
+        if (node.functionName === 'relu_forward') {
+            const primaryOutput = Array.from(node.outputs.values())[0];
+            const totalElements = primaryOutput.shape.reduce((a, b) => a * b, 1);
+            kernelArgs = [
+                ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
+                ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
+                ...paramArgs,
+                totalElements.toString()
+            ].join(', ');
+        } else {
+            kernelArgs = [
+                ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
+                ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
+                ...paramArgs
+            ].join(', ');
+        }
 
         // Calculate optimal grid and block dimensions based on tensor shapes and kernel type
         const { gridDim, blockDim } = this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
@@ -470,7 +483,7 @@ export class CudaGraphCompiler {
     });
     const outputParams = Array.from(graphOutputs.keys()).flatMap(name => getTensorParams(name, "float32"));
     const parameterParams = paramNames.flatMap(name => getTensorParams(name, "float32"));
-    const hostFunctionSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
+    const hostFunctionSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace', 'size_t workspace_size'];
 
     const tensorStruct = `
 // Debug mode bounds checking (can be disabled for release builds)
@@ -490,8 +503,7 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 1 || i < 0 || i >= shape[0]) {
       printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\\n", i, shape[0], dims);
-      // In device code, we can't throw exceptions, so we'll return a reference to the first element
-      // This prevents crashes but indicates a programming error
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[i]; 
@@ -502,6 +514,7 @@ struct Tensor {
     if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
       printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, shape[0], shape[1], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[i * shape[1] + j]; 
@@ -512,6 +525,7 @@ struct Tensor {
     if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
       printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, shape[0], shape[1], shape[2], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[(i * shape[1] + j) * shape[2] + k]; 
@@ -523,6 +537,7 @@ struct Tensor {
         k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
       printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
@@ -596,6 +611,22 @@ ${kernelDefinitions}
 extern "C" void executeGraph(
   ${hostFunctionSignatureParams.join(",\n  ")}
 ) {
+  // --- Input Validation ---
+  if (!workspace) {
+    fprintf(stderr, "Error: Null workspace pointer passed to executeGraph\\n");
+    return;
+  }
+  
+  if (workspace_size < ${workspaceSize}) {
+    fprintf(stderr, "Error: Insufficient workspace size. Got %zu, need at least ${workspaceSize} bytes\\n", workspace_size);
+    return;
+  }
+
+  // --- Memory Alignment Helper ---
+  auto align_to_256_bytes = [](size_t offset) -> size_t {
+    return (offset + 255) & ~255;
+  };
+
   // --- Variable Declarations ---
 ${variableDeclarations.join("\n")}
 
@@ -604,6 +635,9 @@ ${tensorInstantiations.join("\n")}
 
   // --- Kernel Launch Sequence ---
 ${executionCalls.join("\n")}
+  
+  // --- Synchronization for completion verification ---
+  CUDA_CHECK(cudaDeviceSynchronize());
   // --- End Execution Flow ---
 }
     `;
@@ -681,16 +715,16 @@ ${executionCalls.join("\n")}
     let workspaceSize = 0;
     const allocatedRegions: {start: number, end: number, liveStart: number, liveEnd: number}[] = [];
     
-    // Helper function to align memory to 16-byte boundaries
-    const alignTo16Bytes = (size: number): number => {
-        return Math.ceil(size / 16) * 16;
+    // Helper function to align memory to 256-byte boundaries for optimal GPU performance
+    const alignTo256Bytes = (size: number): number => {
+        return Math.ceil(size / 256) * 256;
     };
 
     // Sort tensors by live start time for better memory reuse
     const sortedTensors = Array.from(intermediateTensors.entries()).sort((a, b) => a[1].liveStart - b[1].liveStart);
 
     for (const [key, tensor] of sortedTensors) {
-        const alignedSize = alignTo16Bytes(tensor.size);
+        const alignedSize = alignTo256Bytes(tensor.size);
         let placed = false;
         
         // Try to find a region that can be reused
