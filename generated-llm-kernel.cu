@@ -312,22 +312,8 @@ public:
       /**
        * @cuda global
        */
-      __global__ void scale_forward(Tensor<float> output, Tensor<float> input) {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        int size = input.shape[0] * input.shape[1] * input.shape[2] * input.shape[3];
-        
-        for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            output.data[i] = input.data[i] * 0.17677669529663687f;
-        }
-      }
-    
-
-
-      /**
-       * @cuda global
-       */
-      __global__ void softmax_forward(Tensor<float> output, Tensor<float> input) {
-        // This kernel computes softmax over the last dimension.
+      __global__ void fused_scale_softmax_forward(Tensor<float> output, Tensor<float> input) {
+        // This kernel computes scale + softmax in a single pass over the last dimension.
         // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
         extern __shared__ float shared_mem[];
         int tid = threadIdx.x;
@@ -337,11 +323,11 @@ public:
           int batch_idx = blockIdx.x;
           int size = input.shape[1];
           
-          // 1. Find max for numerical stability
-          // 1. Find max for numerical stability
+          // 1. Find max of scaled values for numerical stability
           float max_val_thread = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val_thread = fmaxf(max_val_thread, input(batch_idx, i));
+              float scaled_val = input(batch_idx, i) * 0.17677669529663687f;
+              max_val_thread = fmaxf(max_val_thread, scaled_val);
           }
           
           // Intra-warp reduction for max_val_thread using __shfl_down_sync
@@ -366,10 +352,11 @@ public:
           }
           float max_val = shared_mem[0];
 
-          // 2. Calculate sum of exps
+          // 2. Calculate sum of exp(scaled_value - max)
           float sum_exp_thread = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp_thread += expf(input(batch_idx, i) - max_val);
+              float scaled_val = input(batch_idx, i) * 0.17677669529663687f;
+              sum_exp_thread += expf(scaled_val - max_val);
           }
           
           // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
@@ -394,9 +381,10 @@ public:
           }
           float sum_exp = shared_mem[0];
 
-          // 3. Calculate softmax
+          // 3. Calculate final softmax values
           for (int i = tid; i < size; i += blockDim.x) {
-              output(batch_idx, i) = expf(input(batch_idx, i) - max_val) / sum_exp;
+              float scaled_val = input(batch_idx, i) * 0.17677669529663687f;
+              output(batch_idx, i) = expf(scaled_val - max_val) / sum_exp;
           }
         } else {
           // Handle 4D case: [batch, heads, seq, seq]
@@ -405,11 +393,11 @@ public:
           int row_idx = blockIdx.x;
           int size = input.shape[3];
 
-          // 1. Find max for numerical stability
-          // 1. Find max for numerical stability
+          // 1. Find max of scaled values for numerical stability
           float max_val_thread = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val_thread = fmaxf(max_val_thread, input(batch_idx, head_idx, row_idx, i));
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * 0.17677669529663687f;
+              max_val_thread = fmaxf(max_val_thread, scaled_val);
           }
           
           // Intra-warp reduction for max_val_thread using __shfl_down_sync
@@ -434,10 +422,11 @@ public:
           }
           float max_val = shared_mem[0];
 
-          // 2. Calculate sum of exps
+          // 2. Calculate sum of exp(scaled_value - max)
           float sum_exp_thread = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp_thread += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * 0.17677669529663687f;
+              sum_exp_thread += expf(scaled_val - max_val);
           }
           
           // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
@@ -462,9 +451,10 @@ public:
           }
           float sum_exp = shared_mem[0];
 
-          // 3. Calculate softmax
+          // 3. Calculate final softmax values
           for (int i = tid; i < size; i += blockDim.x) {
-              output(batch_idx, head_idx, row_idx, i) = expf(input(batch_idx, head_idx, row_idx, i) - max_val) / sum_exp;
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * 0.17677669529663687f;
+              output(batch_idx, head_idx, row_idx, i) = expf(scaled_val - max_val) / sum_exp;
           }
         }
       }
@@ -701,6 +691,154 @@ public:
       }
     
 
+
+      /**
+       * @cuda global
+       */
+      __global__ void softmax_forward(Tensor<float> output, Tensor<float> input) {
+        // This kernel computes softmax over the last dimension.
+        // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
+        extern __shared__ float shared_mem[];
+        int tid = threadIdx.x;
+        
+        if (input.dims == 2) {
+          // Handle 2D case: [batch, features]
+          int batch_idx = blockIdx.x;
+          int size = input.shape[1];
+          
+          // 1. Find max for numerical stability
+          // 1. Find max for numerical stability
+          float max_val_thread = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              max_val_thread = fmaxf(max_val_thread, input(batch_idx, i));
+          }
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
+          }
+          float max_val = shared_mem[0];
+
+          // 2. Calculate sum of exps
+          float sum_exp_thread = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              sum_exp_thread += expf(input(batch_idx, i) - max_val);
+          }
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
+          }
+          float sum_exp = shared_mem[0];
+
+          // 3. Calculate softmax
+          for (int i = tid; i < size; i += blockDim.x) {
+              output(batch_idx, i) = expf(input(batch_idx, i) - max_val) / sum_exp;
+          }
+        } else {
+          // Handle 4D case: [batch, heads, seq, seq]
+          int batch_idx = blockIdx.z;
+          int head_idx = blockIdx.y;
+          int row_idx = blockIdx.x;
+          int size = input.shape[3];
+
+          // 1. Find max for numerical stability
+          // 1. Find max for numerical stability
+          float max_val_thread = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              max_val_thread = fmaxf(max_val_thread, input(batch_idx, head_idx, row_idx, i));
+          }
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
+          }
+          float max_val = shared_mem[0];
+
+          // 2. Calculate sum of exps
+          float sum_exp_thread = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              sum_exp_thread += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
+          }
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
+          }
+          float sum_exp = shared_mem[0];
+
+          // 3. Calculate softmax
+          for (int i = tid; i < size; i += blockDim.x) {
+              output(batch_idx, head_idx, row_idx, i) = expf(input(batch_idx, head_idx, row_idx, i) - max_val) / sum_exp;
+          }
+        }
+      }
+    
+
 // ======================================================
 // Main Host-Side Execution Function
 // ======================================================
@@ -845,37 +983,35 @@ extern "C" void executeGraph(
   const int intermediate_7_shape[] = {1, 4, 256, 32};
   const int intermediate_8_shape[] = {1, 4, 256, 256};
   const int intermediate_9_shape[] = {1, 4, 256, 256};
-  const int intermediate_10_shape[] = {1, 4, 256, 256};
-  const int intermediate_11_shape[] = {1, 4, 256, 32};
+  const int intermediate_10_shape[] = {1, 4, 256, 32};
+  const int intermediate_11_shape[] = {1, 256, 128};
   const int intermediate_12_shape[] = {1, 256, 128};
   const int intermediate_13_shape[] = {1, 256, 128};
   const int intermediate_14_shape[] = {1, 256, 128};
-  const int intermediate_15_shape[] = {1, 256, 128};
+  const int intermediate_15_shape[] = {1, 512};
   const int intermediate_16_shape[] = {1, 512};
-  const int intermediate_17_shape[] = {1, 512};
-  const int intermediate_18_shape[] = {1, 128};
+  const int intermediate_17_shape[] = {1, 128};
+  const int intermediate_18_shape[] = {1, 256, 128};
   const int intermediate_19_shape[] = {1, 256, 128};
-  const int intermediate_20_shape[] = {1, 256, 128};
+  const int intermediate_20_shape[] = {1, 128};
   const int intermediate_21_shape[] = {1, 128};
   const int intermediate_22_shape[] = {1, 128};
-  const int intermediate_23_shape[] = {1, 128};
+  const int intermediate_23_shape[] = {1, 4, 128, 32};
   const int intermediate_24_shape[] = {1, 4, 128, 32};
   const int intermediate_25_shape[] = {1, 4, 128, 32};
-  const int intermediate_26_shape[] = {1, 4, 128, 32};
+  const int intermediate_26_shape[] = {1, 4, 128, 128};
   const int intermediate_27_shape[] = {1, 4, 128, 128};
-  const int intermediate_28_shape[] = {1, 4, 128, 128};
-  const int intermediate_29_shape[] = {1, 4, 128, 128};
-  const int intermediate_30_shape[] = {1, 4, 128, 32};
-  const int intermediate_31_shape[] = {1, 128, 128};
-  const int intermediate_32_shape[] = {1, 128, 128};
-  const int intermediate_33_shape[] = {1, 256, 128};
-  const int intermediate_34_shape[] = {1, 256, 128};
-  const int intermediate_35_shape[] = {1, 512};
-  const int intermediate_36_shape[] = {1, 512};
-  const int intermediate_37_shape[] = {1, 128};
-  const int intermediate_38_shape[] = {1, 256, 128};
-  const int intermediate_39_shape[] = {1, 256, 128};
-  const int intermediate_40_shape[] = {1, 1000};
+  const int intermediate_28_shape[] = {1, 4, 128, 32};
+  const int intermediate_29_shape[] = {1, 128, 128};
+  const int intermediate_30_shape[] = {1, 128, 128};
+  const int intermediate_31_shape[] = {1, 256, 128};
+  const int intermediate_32_shape[] = {1, 256, 128};
+  const int intermediate_33_shape[] = {1, 512};
+  const int intermediate_34_shape[] = {1, 512};
+  const int intermediate_35_shape[] = {1, 128};
+  const int intermediate_36_shape[] = {1, 256, 128};
+  const int intermediate_37_shape[] = {1, 256, 128};
+  const int intermediate_38_shape[] = {1, 1000};
 
   // --- Tensor Struct Instantiation ---
   float* intermediate_0_data = (float*)allocator.allocate(131072);
@@ -908,12 +1044,12 @@ extern "C" void executeGraph(
   float* intermediate_9_data = (float*)allocator.allocate(1048576);
   if (!intermediate_9_data) { fprintf(stderr, "Failed to allocate memory for intermediate_9\n"); return; }
   Tensor<float> intermediate_9_tensor = {intermediate_9_data, intermediate_9_shape, 4};
-  float* intermediate_10_data = (float*)allocator.allocate(1048576);
+  float* intermediate_10_data = (float*)allocator.allocate(131072);
   if (!intermediate_10_data) { fprintf(stderr, "Failed to allocate memory for intermediate_10\n"); return; }
   Tensor<float> intermediate_10_tensor = {intermediate_10_data, intermediate_10_shape, 4};
   float* intermediate_11_data = (float*)allocator.allocate(131072);
   if (!intermediate_11_data) { fprintf(stderr, "Failed to allocate memory for intermediate_11\n"); return; }
-  Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 4};
+  Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 3};
   float* intermediate_12_data = (float*)allocator.allocate(131072);
   if (!intermediate_12_data) { fprintf(stderr, "Failed to allocate memory for intermediate_12\n"); return; }
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
@@ -923,84 +1059,78 @@ extern "C" void executeGraph(
   float* intermediate_14_data = (float*)allocator.allocate(131072);
   if (!intermediate_14_data) { fprintf(stderr, "Failed to allocate memory for intermediate_14\n"); return; }
   Tensor<float> intermediate_14_tensor = {intermediate_14_data, intermediate_14_shape, 3};
-  float* intermediate_15_data = (float*)allocator.allocate(131072);
+  float* intermediate_15_data = (float*)allocator.allocate(2048);
   if (!intermediate_15_data) { fprintf(stderr, "Failed to allocate memory for intermediate_15\n"); return; }
-  Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 3};
+  Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
   float* intermediate_16_data = (float*)allocator.allocate(2048);
   if (!intermediate_16_data) { fprintf(stderr, "Failed to allocate memory for intermediate_16\n"); return; }
   Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
-  float* intermediate_17_data = (float*)allocator.allocate(2048);
+  float* intermediate_17_data = (float*)allocator.allocate(512);
   if (!intermediate_17_data) { fprintf(stderr, "Failed to allocate memory for intermediate_17\n"); return; }
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  float* intermediate_18_data = (float*)allocator.allocate(512);
+  float* intermediate_18_data = (float*)allocator.allocate(131072);
   if (!intermediate_18_data) { fprintf(stderr, "Failed to allocate memory for intermediate_18\n"); return; }
-  Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 2};
+  Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
   float* intermediate_19_data = (float*)allocator.allocate(131072);
   if (!intermediate_19_data) { fprintf(stderr, "Failed to allocate memory for intermediate_19\n"); return; }
   Tensor<float> intermediate_19_tensor = {intermediate_19_data, intermediate_19_shape, 3};
-  float* intermediate_20_data = (float*)allocator.allocate(131072);
+  float* intermediate_20_data = (float*)allocator.allocate(512);
   if (!intermediate_20_data) { fprintf(stderr, "Failed to allocate memory for intermediate_20\n"); return; }
-  Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 3};
+  Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 2};
   float* intermediate_21_data = (float*)allocator.allocate(512);
   if (!intermediate_21_data) { fprintf(stderr, "Failed to allocate memory for intermediate_21\n"); return; }
   Tensor<float> intermediate_21_tensor = {intermediate_21_data, intermediate_21_shape, 2};
   float* intermediate_22_data = (float*)allocator.allocate(512);
   if (!intermediate_22_data) { fprintf(stderr, "Failed to allocate memory for intermediate_22\n"); return; }
   Tensor<float> intermediate_22_tensor = {intermediate_22_data, intermediate_22_shape, 2};
-  float* intermediate_23_data = (float*)allocator.allocate(512);
+  float* intermediate_23_data = (float*)allocator.allocate(65536);
   if (!intermediate_23_data) { fprintf(stderr, "Failed to allocate memory for intermediate_23\n"); return; }
-  Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 2};
+  Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 4};
   float* intermediate_24_data = (float*)allocator.allocate(65536);
   if (!intermediate_24_data) { fprintf(stderr, "Failed to allocate memory for intermediate_24\n"); return; }
   Tensor<float> intermediate_24_tensor = {intermediate_24_data, intermediate_24_shape, 4};
   float* intermediate_25_data = (float*)allocator.allocate(65536);
   if (!intermediate_25_data) { fprintf(stderr, "Failed to allocate memory for intermediate_25\n"); return; }
   Tensor<float> intermediate_25_tensor = {intermediate_25_data, intermediate_25_shape, 4};
-  float* intermediate_26_data = (float*)allocator.allocate(65536);
+  float* intermediate_26_data = (float*)allocator.allocate(262144);
   if (!intermediate_26_data) { fprintf(stderr, "Failed to allocate memory for intermediate_26\n"); return; }
   Tensor<float> intermediate_26_tensor = {intermediate_26_data, intermediate_26_shape, 4};
   float* intermediate_27_data = (float*)allocator.allocate(262144);
   if (!intermediate_27_data) { fprintf(stderr, "Failed to allocate memory for intermediate_27\n"); return; }
   Tensor<float> intermediate_27_tensor = {intermediate_27_data, intermediate_27_shape, 4};
-  float* intermediate_28_data = (float*)allocator.allocate(262144);
+  float* intermediate_28_data = (float*)allocator.allocate(65536);
   if (!intermediate_28_data) { fprintf(stderr, "Failed to allocate memory for intermediate_28\n"); return; }
   Tensor<float> intermediate_28_tensor = {intermediate_28_data, intermediate_28_shape, 4};
-  float* intermediate_29_data = (float*)allocator.allocate(262144);
+  float* intermediate_29_data = (float*)allocator.allocate(65536);
   if (!intermediate_29_data) { fprintf(stderr, "Failed to allocate memory for intermediate_29\n"); return; }
-  Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 4};
+  Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 3};
   float* intermediate_30_data = (float*)allocator.allocate(65536);
   if (!intermediate_30_data) { fprintf(stderr, "Failed to allocate memory for intermediate_30\n"); return; }
-  Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 4};
-  float* intermediate_31_data = (float*)allocator.allocate(65536);
+  Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
+  float* intermediate_31_data = (float*)allocator.allocate(131072);
   if (!intermediate_31_data) { fprintf(stderr, "Failed to allocate memory for intermediate_31\n"); return; }
   Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
-  float* intermediate_32_data = (float*)allocator.allocate(65536);
+  float* intermediate_32_data = (float*)allocator.allocate(131072);
   if (!intermediate_32_data) { fprintf(stderr, "Failed to allocate memory for intermediate_32\n"); return; }
   Tensor<float> intermediate_32_tensor = {intermediate_32_data, intermediate_32_shape, 3};
-  float* intermediate_33_data = (float*)allocator.allocate(131072);
+  float* intermediate_33_data = (float*)allocator.allocate(2048);
   if (!intermediate_33_data) { fprintf(stderr, "Failed to allocate memory for intermediate_33\n"); return; }
-  Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 3};
-  float* intermediate_34_data = (float*)allocator.allocate(131072);
+  Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
+  float* intermediate_34_data = (float*)allocator.allocate(2048);
   if (!intermediate_34_data) { fprintf(stderr, "Failed to allocate memory for intermediate_34\n"); return; }
-  Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 3};
-  float* intermediate_35_data = (float*)allocator.allocate(2048);
+  Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
+  float* intermediate_35_data = (float*)allocator.allocate(512);
   if (!intermediate_35_data) { fprintf(stderr, "Failed to allocate memory for intermediate_35\n"); return; }
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  float* intermediate_36_data = (float*)allocator.allocate(2048);
+  float* intermediate_36_data = (float*)allocator.allocate(131072);
   if (!intermediate_36_data) { fprintf(stderr, "Failed to allocate memory for intermediate_36\n"); return; }
-  Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 2};
-  float* intermediate_37_data = (float*)allocator.allocate(512);
+  Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
+  float* intermediate_37_data = (float*)allocator.allocate(131072);
   if (!intermediate_37_data) { fprintf(stderr, "Failed to allocate memory for intermediate_37\n"); return; }
-  Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 2};
-  float* intermediate_38_data = (float*)allocator.allocate(131072);
+  Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 3};
+  float* intermediate_38_data = (float*)allocator.allocate(4000);
   if (!intermediate_38_data) { fprintf(stderr, "Failed to allocate memory for intermediate_38\n"); return; }
-  Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 3};
-  float* intermediate_39_data = (float*)allocator.allocate(131072);
-  if (!intermediate_39_data) { fprintf(stderr, "Failed to allocate memory for intermediate_39\n"); return; }
-  Tensor<float> intermediate_39_tensor = {intermediate_39_data, intermediate_39_shape, 3};
-  float* intermediate_40_data = (float*)allocator.allocate(4000);
-  if (!intermediate_40_data) { fprintf(stderr, "Failed to allocate memory for intermediate_40\n"); return; }
-  Tensor<float> intermediate_40_tensor = {intermediate_40_data, intermediate_40_shape, 2};
+  Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 2};
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
   Tensor<float> param_0_embeddings = {param_0_embeddings_data, param_0_embeddings_shape, param_0_embeddings_dims};
@@ -1059,71 +1189,67 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
   CUDA_CHECK(cudaGetLastError());
-  scale_forward<<<dim3(1024, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
+  fused_scale_softmax_forward<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(256, 4, 1), dim3(256, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
+  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
+  concat_heads_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor);
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
+  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor, param_8_weights, param_9_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, param_8_weights, param_9_bias);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_1_tensor, intermediate_12_tensor);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_14_tensor, intermediate_13_tensor, param_10_gamma, param_11_beta);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_15_tensor, intermediate_14_tensor, param_10_gamma, param_11_beta);
+  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_15_tensor, intermediate_14_tensor, param_12_weights, param_13_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_12_weights, param_13_bias);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor, param_14_weights, param_15_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, param_14_weights, param_15_bias);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_14_tensor, intermediate_17_tensor);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_19_tensor, intermediate_18_tensor, param_16_gamma, param_17_beta);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_20_tensor, intermediate_19_tensor, param_16_gamma, param_17_beta);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_20_tensor, intermediate_19_tensor, param_18_weights, param_19_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, param_18_weights, param_19_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_19_tensor, param_20_weights, param_21_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, param_20_weights, param_21_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_19_tensor, param_22_weights, param_23_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, param_22_weights, param_23_bias);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_25_tensor, intermediate_22_tensor);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(1, 1), dim3(128, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(1, 1), dim3(128, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
+  fused_scale_softmax_forward<<<dim3(1, 1), dim3(128, 1, 1), 0>>>(intermediate_27_tensor, intermediate_26_tensor);
   CUDA_CHECK(cudaGetLastError());
-  scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
+  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 512>>>(intermediate_29_tensor, intermediate_28_tensor);
+  concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_29_tensor, intermediate_28_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
+  dense_forward_3d<<<dim3(1, 128, 1), dim3(256, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, param_24_weights, param_25_bias);
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_31_tensor, intermediate_19_tensor, intermediate_30_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 128, 1), dim3(256, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, param_24_weights, param_25_bias);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_32_tensor, intermediate_31_tensor, param_26_gamma, param_27_beta);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
+  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_32_tensor, param_28_weights, param_29_bias);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_34_tensor, intermediate_33_tensor, param_26_gamma, param_27_beta);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_34_tensor, intermediate_33_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_28_weights, param_29_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_30_weights, param_31_bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_32_tensor, intermediate_35_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, param_30_weights, param_31_bias);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_37_tensor, intermediate_36_tensor, param_32_gamma, param_33_beta);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
+  dense_forward_2d<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_37_tensor, param_34_weights, param_35_bias);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_39_tensor, intermediate_38_tensor, param_32_gamma, param_33_beta);
-  CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, param_34_weights, param_35_bias);
-  CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 4096>>>(output, intermediate_40_tensor);
+  softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 4096>>>(output, intermediate_38_tensor);
   CUDA_CHECK(cudaGetLastError());
   
   // --- Synchronization for completion verification ---

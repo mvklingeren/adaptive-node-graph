@@ -29,7 +29,7 @@ for (int s = blockDim.x / 2; s > 0; s >>= 1) {
 
 ### Tensor Core Support
 
-[0x1A2B3E] - "Add Tensor Core support for matrix multiplication operations. Implement WMMA API or use cublasGemmEx with appropriate data types (FP16/BF16) for significant speedup on Volta+ GPUs."
+[COMPLETED 0x1A2B3E] - "Add Tensor Core support for matrix multiplication operations. Implement WMMA API or use cublasGemmEx with appropriate data types (FP16/BF16) for significant speedup on Volta+ GPUs."
 
 ### Kernel Fusion
 

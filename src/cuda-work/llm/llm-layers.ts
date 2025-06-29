@@ -115,6 +115,179 @@ export class LayerNormLayer implements Layer {
 }
 
 // ============================================================================
+// Fused Scale-Softmax Layer
+// ============================================================================
+
+export class FusedScaleSoftmaxLayer implements Layer {
+  constructor(private scale: number) {}
+
+  addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
+    const deviceCode = `
+      /**
+       * @cuda global
+       */
+      __global__ void fused_scale_softmax_forward(Tensor<float> output, Tensor<float> input) {
+        // This kernel computes scale + softmax in a single pass over the last dimension.
+        // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
+        extern __shared__ float shared_mem[];
+        int tid = threadIdx.x;
+        
+        if (input.dims == 2) {
+          // Handle 2D case: [batch, features]
+          int batch_idx = blockIdx.x;
+          int size = input.shape[1];
+          
+          // 1. Find max of scaled values for numerical stability
+          float max_val_thread = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, i) * ${this.scale}f;
+              max_val_thread = fmaxf(max_val_thread, scaled_val);
+          }
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
+          }
+          float max_val = shared_mem[0];
+
+          // 2. Calculate sum of exp(scaled_value - max)
+          float sum_exp_thread = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, i) * ${this.scale}f;
+              sum_exp_thread += expf(scaled_val - max_val);
+          }
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
+          }
+          float sum_exp = shared_mem[0];
+
+          // 3. Calculate final softmax values
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, i) * ${this.scale}f;
+              output(batch_idx, i) = expf(scaled_val - max_val) / sum_exp;
+          }
+        } else {
+          // Handle 4D case: [batch, heads, seq, seq]
+          int batch_idx = blockIdx.z;
+          int head_idx = blockIdx.y;
+          int row_idx = blockIdx.x;
+          int size = input.shape[3];
+
+          // 1. Find max of scaled values for numerical stability
+          float max_val_thread = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * ${this.scale}f;
+              max_val_thread = fmaxf(max_val_thread, scaled_val);
+          }
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
+          }
+          float max_val = shared_mem[0];
+
+          // 2. Calculate sum of exp(scaled_value - max)
+          float sum_exp_thread = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * ${this.scale}f;
+              sum_exp_thread += expf(scaled_val - max_val);
+          }
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
+          __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
+          }
+          float sum_exp = shared_mem[0];
+
+          // 3. Calculate final softmax values
+          for (int i = tid; i < size; i += blockDim.x) {
+              float scaled_val = input(batch_idx, head_idx, row_idx, i) * ${this.scale}f;
+              output(batch_idx, head_idx, row_idx, i) = expf(scaled_val - max_val) / sum_exp;
+          }
+        }
+      }
+    `;
+
+    const fusedScaleSoftmaxNode = new CudaNode(deviceCode, "fused_scale_softmax_forward")
+      .addInput("input", [-1, -1], "float32") // Start with 2D, will be resolved dynamically
+      .addOutput("output", [-1, -1], "float32")
+      .setShapeResolver((inputs) => {
+        const inputShape = inputs.get("input")!.shape;
+        return new Map([["output", { shape: inputShape }]]);
+      });
+
+    graph.addNode(fusedScaleSoftmaxNode);
+    return fusedScaleSoftmaxNode;
+  }
+}
+
+// ============================================================================
 // Softmax Layer
 // ============================================================================
 

@@ -5,7 +5,7 @@
 import { CudaNode, CudaGraph } from "../cuda-graph";
 import { CudaRuntime, CudaTensor } from "../cuda-abstractions";
 import { Layer, NeuralGraph } from "../neural-network.js";
-import { SoftmaxLayer } from "./llm-layers.js";
+import { SoftmaxLayer, FusedScaleSoftmaxLayer } from "./llm-layers.js";
 
 // ============================================================================
 // Scaled Dot-Product Attention
@@ -25,15 +25,13 @@ export class ScaledDotProductAttention implements Layer {
 
     // Instantiate layers for the attention mechanism
     const matmul_qk = new BatchedMatMul(true); // Transpose K for QK^T
-    const scaleLayer = new ScaleLayer(this.runtime, scale);
-    const softmaxLayer = new SoftmaxLayer();
+    const fusedScaleSoftmaxLayer = new FusedScaleSoftmaxLayer(scale);
     const matmul_sv = new BatchedMatMul(false); // No transpose for SV
 
     // Build the graph segment for attention with proper connections
     const qkNode = matmul_qk.addToGraph(graph, q, k);
-    const scaleNode = graph.addLayer(scaleLayer, qkNode);
-    const softmaxNode = graph.addLayer(softmaxLayer, scaleNode);
-    const svNode = matmul_sv.addToGraph(graph, softmaxNode, v);
+    const scaleSoftmaxNode = graph.addLayer(fusedScaleSoftmaxLayer, qkNode);
+    const svNode = matmul_sv.addToGraph(graph, scaleSoftmaxNode, v);
 
     return svNode;
   }
