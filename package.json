@@ -28,6 +28,7 @@
     "compile:cuda": "npm run test-neural-graph &&./compile-and-extract.sh",
     "clean": "rm -rf dist",
     "test": "npm run test-basics && npm run test-improvements && npm run test-complex && npm run test-neural-graph && npm run test-custom-node",
+    "test-language-model": "esbuild src/cuda-work/llm/test-language-model.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-language-model.js --external:pino && node dist/test-language-model.js"
   },
   "author": "mvklingeren",
   "license": "MIT",

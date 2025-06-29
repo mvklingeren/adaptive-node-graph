@@ -26,16 +26,23 @@ export class NeuralGraph extends CudaGraph {
    * a standard 'output' to 'input' connection.
    * @param layer - The layer to add.
    */
-  addLayer(layer: Layer): this {
-    const currentNode = layer.addToGraph(this);
+  addLayer(layer: Layer, ...inputs: CudaNode[]): CudaNode {
+    if (inputs.length === 0 && this.lastNode) {
+      inputs.push(this.lastNode);
+    }
+    
+    const currentNode = layer.addToGraph(this, ...inputs);
 
-    if (this.lastNode) {
-      // Connect the default output of the last node to the default input of the current node.
-      this.connect(this.lastNode, 'output', currentNode, 'input');
+    // The connection logic is now handled by the individual layers
+    // or by the specific graph-building logic (like in LanguageModel).
+    if (inputs.length > 0 && layer.constructor.name !== 'AddLayer' && layer.constructor.name !== 'BatchedMatMul') {
+        for(const input of inputs) {
+            this.connect(input, 'output', currentNode, 'input');
+        }
     }
 
     this.lastNode = currentNode;
-    return this;
+    return currentNode;
   }
 }
 
@@ -51,9 +58,10 @@ export interface Layer {
   /**
    * Adds the layer's logic (as one or more CudaNodes) to the provided graph.
    * @param graph - The NeuralGraph to add the layer to.
+   * @param inputs - The list of input nodes for this layer.
    * @returns The final CudaNode of the layer, to be connected to the next layer.
    */
-  addToGraph(graph: NeuralGraph): CudaNode;
+  addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode;
 }
 
 // ============================================================================
@@ -65,7 +73,7 @@ export interface Layer {
  * f(x) = max(0, x)
  */
 export class ReLULayer implements Layer {
-  addToGraph(graph: NeuralGraph): CudaNode {
+  addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
     const deviceCode = `
       __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -95,12 +103,9 @@ export class ReLULayer implements Layer {
 /**
  * A fully connected (dense) layer.
  * f(x) = Wx + b
- * Note: This implementation is simplified for a single neuron for clarity.
- * A real implementation would use matrix multiplication.
+ * This layer now creates a node that points to a single, reusable __global__ kernel.
  */
 export class DenseLayer implements Layer {
-  private static instanceCounter = 0;
-  private readonly id: number;
   private weights!: CudaTensor;
   private bias!: CudaTensor;
 
@@ -108,9 +113,7 @@ export class DenseLayer implements Layer {
     private runtime: CudaRuntime,
     public readonly inputFeatures: number,
     public readonly outputFeatures: number
-  ) {
-    this.id = DenseLayer.instanceCounter++;
-  }
+  ) {}
 
   async initialize(): Promise<void> {
       const weightShape = [this.inputFeatures, this.outputFeatures];
@@ -120,39 +123,46 @@ export class DenseLayer implements Layer {
       // In a real implementation, you would initialize the tensors with random data.
   }
 
-  addToGraph(graph: NeuralGraph): CudaNode {
-    const weightParamName = `weights_${this.id}`;
-    const biasParamName = `bias_${this.id}`;
-
-    // This device code implements a matrix-vector multiplication.
-    // Each thread calculates the value for one output neuron.
+  addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
+    // This device code implements a generic, batched matrix-vector multiplication.
+    // It's designed to be a __global__ kernel, not a __device__ function.
     const deviceCode = `
-      __device__ void dense_forward_${this.id}(
+      /**
+       * @cuda global
+       */
+      void dense_forward(
         Tensor<float> output, 
         Tensor<float> input, 
-        Tensor<float> ${weightParamName}, 
-        Tensor<float> ${biasParamName}
+        Tensor<float> weights, 
+        Tensor<float> bias
       ) {
-        int i = blockIdx.x * blockDim.x + threadIdx.x;
-        
-        int input_size = input.shape[0];
-        int output_size = output.shape[0];
+        // Each thread computes one output element.
+        // Grid: (output_features / threads_per_block, batch_size)
+        // Block: (threads_per_block)
+        int batch_idx = blockIdx.y;
+        int output_feature_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-        if (i < output_size) {
+        if (batch_idx < input.shape[0] && output_feature_idx < output.shape[1]) {
           float sum = 0.0f;
-          for (int j = 0; j < input_size; ++j) {
-            sum += input(j) * ${weightParamName}(i, j);
+          for (int k = 0; k < input.shape[1]; ++k) {
+            sum += input(batch_idx, k) * weights(k, output_feature_idx);
           }
-          output(i) = sum + ${biasParamName}(i);
+          output(batch_idx, output_feature_idx) = sum + bias(output_feature_idx);
         }
       }
     `;
 
-    const denseNode = new CudaNode(deviceCode, `dense_forward_${this.id}`)
-      .addInput('input', [this.inputFeatures], 'float32')
-      .addOutput('output', [this.outputFeatures], 'float32')
-      .addParameter(weightParamName, this.weights)
-      .addParameter(biasParamName, this.bias);
+    const denseNode = new CudaNode(deviceCode, `dense_forward`)
+      .addInput('input', [-1, this.inputFeatures], 'float32')
+      .addOutput('output', [-1, this.outputFeatures], 'float32')
+      // Use standardized parameter names for the reusable kernel
+      .addParameter('weights', this.weights)
+      .addParameter('bias', this.bias)
+      .setShapeResolver(inputs => {
+        const inputShape = inputs.get('input')!.shape;
+        const batchSize = inputShape[0]; // Preserve batch size
+        return new Map([['output', { shape: [batchSize, this.outputFeatures] }]]);
+      });
 
     graph.addNode(denseNode);
     return denseNode;

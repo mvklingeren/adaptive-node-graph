@@ -1,269 +1,185 @@
-import { CustomCudaNode } from "./cuda-nodes.js";
-import { CudaGraph, CudaGraphCompiler, CudaNode } from "./cuda-graph.js";
+// ============================================================================
+// Test and Example Usage for Custom CudaNodes
+// ============================================================================
+// This file demonstrates how to create and use custom CudaNodes directly,
+// without the higher-level abstractions of the NeuralNetwork layers.
+// ============================================================================
+
 import { MockCudaRuntime } from "./cuda-abstractions.js";
+import { CudaGraph, CudaNode, CudaGraphCompiler } from "./cuda-graph.js";
+import * as fs from 'fs';
+import * as path from 'path';
 
-async function testCustomCudaNode() {
-  console.log("--- Running CustomCudaNode Test ---");
-
+async function main() {
+  console.log("Initializing CUDA Runtime and Compiler...");
   const runtime = new MockCudaRuntime();
+  const compiler = new CudaGraphCompiler(runtime);
 
-  const tsCode = `
-    function customAdd(A: number, B: number, C: number): void {
-      let i: number = 0; // Simplified for testing
-      C[i] = A[i] + B[i];
-    }
-  `;
-
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-
-    // Manually set the output for now, since the automatic detection is simplified
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
-
-    const graph = new CudaGraph("CustomNodeTest");
-    graph.addNode(customNode);
-
-    // To make the graph valid, we need to connect the inputs.
-    // For this test, we'll create dummy nodes to serve as inputs.
-    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
-    const inputNodeB = new CudaNode("","").addOutput("B", [1], "float32");
-
-    graph.addNode(inputNodeA);
-    graph.addNode(inputNodeB);
-    graph.connect(inputNodeA, "A", customNode, "A");
-    graph.connect(inputNodeB, "B", customNode, "B");
-
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
-
-    console.log("Compilation successful. Generated kernel code:");
-    console.log(kernelCode);
-
-    if (kernelCode.includes("customAdd") && kernelCode.includes("C(i) = A(i) + B(i);")) {
-      console.log("Test PASSED: Kernel code contains the expected custom function.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the expected custom function.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
-}
-
-async function testIfStatement() {
-  console.log("\n--- Running If Statement Test ---");
-  const runtime = new MockCudaRuntime();
-  const tsCode = `
-    function customIf(A: number, B: number, C: number): void {
-      let i: number = 0;
-      if (A[i] > B[i]) {
-        C[i] = A[i];
-      } else {
-        C[i] = B[i];
+  // --- Example 1: A simple "add" node ---
+  console.log("\n--- Example 1: Simple 'add' graph ---");
+  const addGraph = new CudaGraph("AddGraph");
+  const addDeviceCode = `
+    __global__ void add_kernel(Tensor<float> out, const Tensor<float> a, const Tensor<float> b) {
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      if (i < out.shape[0]) {
+        out(i) = a(i) + b(i);
       }
     }
   `;
+  const addNode = new CudaNode(addDeviceCode, "add_kernel")
+    .addInput('a', [1024], 'float32')
+    .addInput('b', [1024], 'float32')
+    .addOutput('out', [1024], 'float32');
+  addGraph.addNode(addNode);
 
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
+  const { kernelCode: addKernelCode } = await compiler.compile(addGraph, new Map());
+  const addOutputPath = path.join(process.cwd(), 'generated-add-kernel.cu');
+  fs.writeFileSync(addOutputPath, addKernelCode);
+  console.log(`'add' kernel code written to ${addOutputPath}`);
 
-    const graph = new CudaGraph("IfTest");
-    graph.addNode(customNode);
 
-    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
-    const inputNodeB = new CudaNode("","").addOutput("B", [1], "float32");
-    graph.addNode(inputNodeA);
-    graph.addNode(inputNodeB);
-    graph.connect(inputNodeA, "A", customNode, "A");
-    graph.connect(inputNodeB, "B", customNode, "B");
-
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
-
-    console.log("Generated kernel code for if statement test:");
-    console.log(kernelCode);
-
-    if (kernelCode.includes("if (A(i) > B(i))")) {
-      console.log("Test PASSED: Kernel code contains the if statement.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the if statement.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
-}
-
-async function testForLoop() {
-  console.log("\n--- Running For Loop Test ---");
-  const runtime = new MockCudaRuntime();
-  const tsCode = `
-    function customFor(A: number, C: number): void {
-      for (let i: number = 0; i < 10; i++) {
-        C[i] = A[i] * 2.0;
+  // --- Example 2: A graph with two connected nodes (add -> scale) ---
+  console.log("\n--- Example 2: 'add' -> 'scale' graph ---");
+  const addScaleGraph = new CudaGraph("AddScaleGraph");
+  const scaleDeviceCode = `
+    __global__ void scale_kernel(Tensor<float> out, const Tensor<float> in, const Tensor<float> scale_factor) {
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      if (i < out.shape[0]) {
+        out(i) = in(i) * scale_factor(0);
       }
     }
   `;
+  const addNode2 = new CudaNode(addDeviceCode, "add_kernel")
+    .addInput('a', [1024], 'float32')
+    .addInput('b', [1024], 'float32')
+    .addOutput('out', [1024], 'float32');
+  
+  const scaleFactor = await runtime.malloc(4, [1], 'float32');
+  const scaleNode = new CudaNode(scaleDeviceCode, "scale_kernel")
+    .addInput('in', [1024], 'float32')
+    .addOutput('out', [1024], 'float32')
+    .addParameter('scale_factor', scaleFactor);
 
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
+  addScaleGraph.addNode(addNode2).addNode(scaleNode);
+  addScaleGraph.connect(addNode2, 'out', scaleNode, 'in');
 
-    const graph = new CudaGraph("ForLoopTest");
-    graph.addNode(customNode);
+  const { kernelCode: addScaleKernelCode } = await compiler.compile(addScaleGraph, new Map());
+  const addScaleOutputPath = path.join(process.cwd(), 'generated-add-scale-kernel.cu');
+  fs.writeFileSync(addScaleOutputPath, addScaleKernelCode);
+  console.log(`'add-scale' kernel code written to ${addScaleOutputPath}`);
 
-    const inputNodeA = new CudaNode("","").addOutput("A", [10], "float32");
-    graph.addNode(inputNodeA);
-    graph.connect(inputNodeA, "A", customNode, "A");
 
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
+  // --- Example 3: A graph with a fan-out structure ---
+  console.log("\n--- Example 3: Fan-out graph ---");
+  const fanOutGraph = new CudaGraph("FanOutGraph");
+  const addNode3 = new CudaNode(addDeviceCode, "add_kernel")
+    .addInput('a', [1024], 'float32')
+    .addInput('b', [1024], 'float32')
+    .addOutput('sum', [1024], 'float32');
+  
+  const scaleNode2 = new CudaNode(scaleDeviceCode, "scale_kernel")
+    .addInput('in', [1024], 'float32')
+    .addOutput('out', [1024], 'float32')
+    .addParameter('scale_factor', scaleFactor);
+  
+  const scaleNode3 = new CudaNode(scaleDeviceCode, "scale_kernel")
+    .addInput('in', [1024], 'float32')
+    .addOutput('out', [1024], 'float32')
+    .addParameter('scale_factor', scaleFactor);
 
-    console.log("Generated kernel code for for loop test:");
-    console.log(kernelCode);
+  fanOutGraph.addNode(addNode3).addNode(scaleNode2).addNode(scaleNode3);
+  fanOutGraph.connect(addNode3, 'sum', scaleNode2, 'in');
+  fanOutGraph.connect(addNode3, 'sum', scaleNode3, 'in');
 
-    if (kernelCode.includes("for (float i = 0; i < 10; i++)")) {
-      console.log("Test PASSED: Kernel code contains the for loop.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the for loop.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
-}
+  const { kernelCode: fanOutKernelCode } = await compiler.compile(fanOutGraph, new Map());
+  const fanOutOutputPath = path.join(process.cwd(), 'generated-fan-out-kernel.cu');
+  fs.writeFileSync(fanOutOutputPath, fanOutKernelCode);
+  console.log(`'fan-out' kernel code written to ${fanOutOutputPath}`);
 
-async function testTypeInference() {
-  console.log("\n--- Running Type Inference Test ---");
-  const runtime = new MockCudaRuntime();
-  const tsCode = `
-    function customTypeInference(A: number, C: number): void {
-      let x = 5;
-      let y = 5.0;
-      let z = true;
-      C[0] = x + y;
-    }
-  `;
 
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
+  // --- Example 4: A graph with a fan-in structure ---
+  console.log("\n--- Example 4: Fan-in graph ---");
+  const fanInGraph = new CudaGraph("FanInGraph");
+  const scaleNode4 = new CudaNode(scaleDeviceCode, "scale_kernel")
+    .addInput('in', [1024], 'float32')
+    .addOutput('out1', [1024], 'float32')
+    .addParameter('scale_factor', scaleFactor);
+  
+  const scaleNode5 = new CudaNode(scaleDeviceCode, "scale_kernel")
+    .addInput('in', [1024], 'float32')
+    .addOutput('out2', [1024], 'float32')
+    .addParameter('scale_factor', scaleFactor);
 
-    const graph = new CudaGraph("TypeInferenceTest");
-    graph.addNode(customNode);
+  const addNode4 = new CudaNode(addDeviceCode, "add_kernel")
+    .addInput('a', [1024], 'float32')
+    .addInput('b', [1024], 'float32')
+    .addOutput('sum', [1024], 'float32');
 
-    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
-    graph.addNode(inputNodeA);
-    graph.connect(inputNodeA, "A", customNode, "A");
+  fanInGraph.addNode(scaleNode4).addNode(scaleNode5).addNode(addNode4);
+  fanInGraph.connect(scaleNode4, 'out1', addNode4, 'a');
+  fanInGraph.connect(scaleNode5, 'out2', addNode4, 'b');
 
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
+  const { kernelCode: fanInKernelCode } = await compiler.compile(fanInGraph, new Map());
+  const fanInOutputPath = path.join(process.cwd(), 'generated-fan-in-kernel.cu');
+  fs.writeFileSync(fanInOutputPath, fanInKernelCode);
+  console.log(`'fan-in' kernel code written to ${fanInOutputPath}`);
 
-    console.log("Generated kernel code for type inference test:");
-    console.log(kernelCode);
 
-    if (
-      kernelCode.includes("int x = 5;") &&
-      kernelCode.includes("float y = 5.0;") &&
-      kernelCode.includes("bool z = true;")
-    ) {
-      console.log("Test PASSED: Kernel code contains the correctly inferred types.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the correctly inferred types.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
-}
+  // --- Example 5: Dynamic Shape Resolution ---
+  console.log("\n--- Example 5: Dynamic Shape Resolution ---");
+  const dynamicGraph = new CudaGraph("DynamicGraph");
+  const dynamicNode = new CudaNode(addDeviceCode, "add_kernel")
+    .addInput('a', [-1, 10], 'float32') // Batch size is dynamic
+    .addInput('b', [-1, 10], 'float32')
+    .addOutput('out', [-1, 10], 'float32')
+    .setShapeResolver(inputs => {
+      const aShape = inputs.get('a')!.shape;
+      // Output shape is the same as input 'a'
+      return new Map([['out', { shape: aShape }]]);
+    });
+  dynamicGraph.addNode(dynamicNode);
 
-async function testWhileLoop() {
-  console.log("\n--- Running While Loop Test ---");
-  const runtime = new MockCudaRuntime();
-  const tsCode = `
-    function customWhile(A: number, C: number): void {
-      let i = 0;
-      while (i < 10) {
-        C[i] = A[i];
-        i++;
-      }
-    }
-  `;
+  // Set the concrete shape before compiling
+  const dynamicInputShapes = new Map([
+    ['a', [64, 10]],
+    ['b', [64, 10]]
+  ]);
+  
+  const { kernelCode: dynamicKernelCode } = await compiler.compile(dynamicGraph, dynamicInputShapes);
+  const dynamicOutputPath = path.join(process.cwd(), 'generated-dynamic-kernel.cu');
+  fs.writeFileSync(dynamicOutputPath, dynamicKernelCode);
+  console.log(`'dynamic' kernel code written to ${dynamicOutputPath}`);
 
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
 
-    const graph = new CudaGraph("WhileLoopTest");
-    graph.addNode(customNode);
-
-    const inputNodeA = new CudaNode("","").addOutput("A", [10], "float32");
-    graph.addNode(inputNodeA);
-    graph.connect(inputNodeA, "A", customNode, "A");
-
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
-
-    console.log("Generated kernel code for while loop test:");
-    console.log(kernelCode);
-
-    if (kernelCode.includes("while (i < 10)")) {
-      console.log("Test PASSED: Kernel code contains the while loop.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the while loop.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
-}
-
-async function testKernelTypeConfiguration() {
-  console.log("\n--- Running Kernel Type Configuration Test ---");
-  const runtime = new MockCudaRuntime();
-  const tsCode = `
-    // @cuda global
-    function customGlobalKernel(A: number, C: number): void {
-      C[0] = A[0];
+  // --- Example 6: More Complex Dynamic Shape Resolution ---
+  console.log("\n--- Example 6: Complex Dynamic Shape Resolution ---");
+  const complexDynamicGraph = new CudaGraph("ComplexDynamicGraph");
+  const matmulDeviceCode = `
+    __global__ void matmul_kernel(Tensor<float> out, const Tensor<float> a, const Tensor<float> b) {
+        // Simplified matmul
     }
   `;
+  const matmulNode = new CudaNode(matmulDeviceCode, "matmul_kernel")
+    .addInput('a', [-1, 784], 'float32') // [batch, in_features]
+    .addInput('b', [784, 10], 'float32') // [in_features, out_features]
+    .addOutput('out', [-1, 10], 'float32') // [batch, out_features]
+    .setShapeResolver(inputs => {
+      const aShape = inputs.get('a')!.shape;
+      const bShape = inputs.get('b')!.shape;
+      const batchSize = aShape[0];
+      const outFeatures = bShape[1];
+      return new Map([['out', { shape: [batchSize, outFeatures] }]]);
+    });
+  complexDynamicGraph.addNode(matmulNode);
 
-  try {
-    const customNode = new CustomCudaNode(tsCode);
-    customNode.outputs.clear();
-    customNode.addOutput("C", [-1], "float32");
-
-    const graph = new CudaGraph("KernelTypeTest");
-    graph.addNode(customNode);
-
-    const inputNodeA = new CudaNode("","").addOutput("A", [1], "float32");
-    graph.addNode(inputNodeA);
-    graph.connect(inputNodeA, "A", customNode, "A");
-
-    const compiler = new CudaGraphCompiler(runtime);
-    const { kernelCode } = await compiler.compile(graph);
-
-    console.log("Generated kernel code for kernel type configuration test:");
-    console.log(kernelCode);
-
-    if (kernelCode.includes("__global__ void customGlobalKernel")) {
-      console.log("Test PASSED: Kernel code contains the __global__ kernel.");
-    } else {
-      console.error("Test FAILED: Kernel code does not contain the __global__ kernel.");
-    }
-  } catch (error) {
-    console.error("Test FAILED:", error);
-  }
+  const complexDynamicInputShapes = new Map([
+    ['a', [128, 784]] // Provide concrete batch size
+  ]);
+  
+  const { kernelCode: complexDynamicKernelCode } = await compiler.compile(complexDynamicGraph, complexDynamicInputShapes);
+  const complexDynamicOutputPath = path.join(process.cwd(), 'generated-complex-dynamic-kernel.cu');
+  fs.writeFileSync(complexDynamicOutputPath, complexDynamicKernelCode);
+  console.log(`'complex-dynamic' kernel code written to ${complexDynamicOutputPath}`);
 }
 
-async function runTests() {
-  await testCustomCudaNode();
-  await testIfStatement();
-  await testForLoop();
-  await testTypeInference();
-  await testWhileLoop();
-  await testKernelTypeConfiguration();
-}
-
-runTests();
+main().catch(console.error);

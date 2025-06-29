@@ -67,18 +67,15 @@ export class CudaNode {
     // Prepare the input for the resolver function
     const currentInputShapes = new Map<string, { shape: number[] }>();
     for (const [name, spec] of this.inputs.entries()) {
-      // Ensure no dynamic shapes exist in the inputs before resolving.
-      if (spec.shape.includes(-1)) {
-        // This can be an error or a signal that more connections are needed first.
-        // For now, we'll skip if not all inputs are concrete.
-        return;
-      }
+      // If an input is dynamic, we still pass it to the resolver,
+      // which might be able to handle it or might need to wait.
       currentInputShapes.set(name, { shape: spec.shape });
     }
 
     const resolvedOutputShapes = this.shapeResolver(currentInputShapes);
 
     // Update the node's output shapes with the resolved ones.
+    // If the resolver returns an empty map, it means it couldn't resolve shapes yet.
     for (const [name, resolvedSpec] of resolvedOutputShapes.entries()) {
       const output = this.outputs.get(name);
       if (output) {
@@ -149,38 +146,28 @@ export class CudaGraph {
     if (!toNode.inputs.has(toPort)) {
       throw new Error(`Target node ${toNode.name} does not have an input port named '${toPort}'.`);
     }
-
-    // --- Shape Propagation and Validation ---
-    // First, ensure the source node's shapes are fully resolved.
-    fromNode.resolveShapes();
-
-    const sourceSpec = fromNode.outputs.get(fromPort)!;
-    const targetSpec = toNode.inputs.get(toPort)!;
-
-    // If the source shape is still dynamic, we cannot proceed.
-    if (sourceSpec.shape.includes(-1)) {
-      throw new Error(`Cannot connect from unresolved dynamic shape on ${fromNode.name}:${fromPort}.`);
-    }
-
-    // Propagate the now-concrete shape from the source to the target.
-    toNode.updateInputShape(toPort, sourceSpec.shape);
-
-    // Now that the target's input shape is updated, try to resolve its outputs.
-    toNode.resolveShapes();
-
-    // The original validation logic is now simplified because we always
-    // propagate from source to target. We can add a final check for safety.
-    const finalTargetSpec = toNode.inputs.get(toPort)!;
-    if (JSON.stringify(sourceSpec.shape) !== JSON.stringify(finalTargetSpec.shape)) {
-      // This should ideally not be reached if updateInputShape works correctly.
-      throw new Error(
-        `Shape mismatch after propagation when connecting ${fromNode.name}:${fromPort} (${JSON.stringify(sourceSpec.shape)}) to ${toNode.name}:${toPort} (${JSON.stringify(finalTargetSpec.shape)}).`
-      );
-    }
     
     this.connections.add({ fromNode, fromPort, toNode, toPort });
     this._isDirty = true;
     return this;
+  }
+
+  getGraphInputs(): Map<string, { node: CudaNode; port: string }> {
+    const graphInputs = new Map<string, { node: CudaNode; port: string }>();
+    const allNodeInputs = new Set<string>();
+
+    for (const conn of this.connections) {
+      allNodeInputs.add(`${conn.toNode.id}:${conn.toPort}`);
+    }
+
+    for (const node of this.nodes.values()) {
+      for (const [inputPort, spec] of node.inputs) {
+        if (!allNodeInputs.has(`${node.id}:${inputPort}`)) {
+          graphInputs.set(inputPort, { node, port: inputPort });
+        }
+      }
+    }
+    return graphInputs;
   }
 
   getExecutionOrder(): CudaNode[] {
@@ -191,62 +178,61 @@ export class CudaGraph {
   }
 
   private updateExecutionOrder(): void {
-    const order: CudaNode[] = [];
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-    const nodeDependencies = new Map<string, Set<CudaNode>>();
+    const sortedOrder: CudaNode[] = [];
+    const inDegree = new Map<string, number>();
+    const adj = new Map<string, CudaNode[]>();
 
     for (const node of this.nodes.values()) {
-        nodeDependencies.set(node.id, new Set());
+        inDegree.set(node.id, 0);
+        adj.set(node.id, []);
     }
 
     for (const conn of this.connections) {
-        nodeDependencies.get(conn.toNode.id)!.add(conn.fromNode);
+        adj.get(conn.fromNode.id)!.push(conn.toNode);
+        inDegree.set(conn.toNode.id, (inDegree.get(conn.toNode.id) || 0) + 1);
     }
 
-    const visit = (node: CudaNode) => {
-      if (visited.has(node.id)) return;
-      if (visiting.has(node.id)) {
-        throw new Error(`Cycle detected in graph involving node ${node.name} (${node.id})`);
-      }
-
-      visiting.add(node.id);
-
-      const dependencies = nodeDependencies.get(node.id) || new Set();
-      for (const dep of dependencies) {
-        visit(dep);
-      }
-
-      visiting.delete(node.id);
-      visited.add(node.id);
-      order.push(node);
-    };
-
+    const queue: CudaNode[] = [];
     for (const node of this.nodes.values()) {
-      if ((nodeDependencies.get(node.id) || new Set()).size === 0) {
-        visit(node);
-      }
-    }
-    
-    for (const node of this.nodes.values()) {
-        if (!visited.has(node.id)) {
-            visit(node);
+        if (inDegree.get(node.id) === 0) {
+            queue.push(node);
         }
     }
 
-    this._executionOrder = order;
+    while (queue.length > 0) {
+        const u = queue.shift()!;
+        sortedOrder.push(u);
+
+        for (const v of adj.get(u.id)!) {
+            inDegree.set(v.id, (inDegree.get(v.id) || 0) - 1);
+            if (inDegree.get(v.id) === 0) {
+                queue.push(v);
+            }
+        }
+    }
+
+    if (sortedOrder.length !== this.nodes.size) {
+        const detectedCycleNodes = Array.from(this.nodes.values())
+            .filter(node => !sortedOrder.includes(node))
+            .map(node => `${node.name} (ID: ${node.id})`)
+            .join(', ');
+        throw new Error(`Cycle detected in the graph. Nodes involved might be: ${detectedCycleNodes}`);
+    }
+
+    this._executionOrder = sortedOrder;
     this._isDirty = false;
   }
 }
 
 // ============================================================================
-// CudaGraphCompiler: Fuses a CudaGraph into a Single Kernel
+// CudaGraphCompiler: Compiles a CudaGraph into a set of kernels and a
+// host-side execution function.
 // ============================================================================
 
 export class CudaGraphCompiler {
   constructor(private runtime: CudaRuntime) {}
 
-  async compile(graph: CudaGraph): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string, workspaceSize: number}> {
+  async compile(graph: CudaGraph, inputShapes: Map<string, number[]>): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string, workspaceSize: number}> {
     const allParams = new Map<string, CudaTensor>();
     for (const node of graph.nodes.values()) {
         for (const [name, tensor] of node.parameters) {
@@ -259,65 +245,278 @@ export class CudaGraphCompiler {
     const orderedParams = Array.from(allParams.values());
     const paramNames = Array.from(allParams.keys());
 
+    this._setAndPropagateShapes(graph, inputShapes);
+
     const { kernelCode, workspaceSize } = this.generateKernelCode(graph, paramNames);
-    const kernel = await this.runtime.compile(kernelCode);
+    const kernel = await this.runtime.compile(kernelCode); 
     
     return { kernel, parameters: orderedParams, kernelCode, workspaceSize };
   }
 
+  private _setAndPropagateShapes(graph: CudaGraph, inputShapes: Map<string, number[]>): void {
+    const graphInputs = graph.getGraphInputs();
+    
+    console.log("DEBUG: Input shapes provided:", Array.from(inputShapes.entries()));
+    console.log("DEBUG: Graph inputs found:", Array.from(graphInputs.entries()).map(([name, info]) => [name, info.node.name, info.port]));
+
+    // First, find a concrete batch size if one is provided.
+    let batchSize = -1;
+    for (const shape of inputShapes.values()) {
+        if (shape.length > 0 && shape[0] !== -1) {
+            batchSize = shape[0];
+            break;
+        }
+    }
+
+    // If no input has a concrete batch size, default to 1 for compilation.
+    if (batchSize === -1) {
+        batchSize = 1;
+    }
+    
+    console.log("DEBUG: Resolved batch size:", batchSize);
+
+    // Update all graph inputs with the resolved batch size.
+    for (const [inputName, shape] of inputShapes.entries()) {
+        const finalShape = shape.map(dim => dim === -1 ? batchSize : dim);
+        const inputInfo = graphInputs.get(inputName);
+        console.log(`DEBUG: Processing input '${inputName}' with shape [${shape}] -> [${finalShape}]`);
+        if (inputInfo) {
+            console.log(`DEBUG: Found graph input '${inputName}' on node '${inputInfo.node.name}' port '${inputInfo.port}'`);
+            console.log(`DEBUG: Before update - node input shape:`, inputInfo.node.inputs.get(inputInfo.port));
+            inputInfo.node.updateInputShape(inputInfo.port, finalShape);
+            console.log(`DEBUG: After update - node input shape:`, inputInfo.node.inputs.get(inputInfo.port));
+        } else {
+            console.warn(`Graph input port named '${inputName}' not found.`);
+        }
+    }
+
+    const executionOrder = graph.getExecutionOrder();
+
+    // Multi-pass shape resolution: some nodes might need multiple passes
+    // to resolve their shapes as upstream shapes become available.
+    let maxPasses = 3;
+    for (let pass = 0; pass < maxPasses; pass++) {
+        console.log(`DEBUG: Shape resolution pass ${pass + 1}`);
+        let anyShapeChanged = false;
+
+        for (const node of executionOrder) {
+            console.log(`DEBUG: Processing node '${node.name}' with inputs:`, Array.from(node.inputs.entries()));
+            
+            // Store the current output shapes to detect changes
+            const oldOutputShapes = new Map();
+            for (const [port, spec] of node.outputs) {
+                oldOutputShapes.set(port, [...spec.shape]);
+            }
+
+            // Resolve the node's own output shapes based on its now-finalized inputs.
+            node.resolveShapes();
+            
+            console.log(`DEBUG: After resolveShapes, node '${node.name}' outputs:`, Array.from(node.outputs.entries()));
+
+            // Check if any output shapes changed
+            for (const [port, spec] of node.outputs) {
+                const oldShape = oldOutputShapes.get(port);
+                if (!oldShape || JSON.stringify(oldShape) !== JSON.stringify(spec.shape)) {
+                    anyShapeChanged = true;
+                }
+            }
+
+            // Propagate the resolved output shapes to all downstream nodes.
+            for (const conn of graph.connections) {
+                if (conn.fromNode.id === node.id) {
+                    const sourceSpec = node.outputs.get(conn.fromPort);
+                    if (sourceSpec) {
+                        console.log(`DEBUG: Propagating shape [${sourceSpec.shape}] from ${conn.fromNode.name}:${conn.fromPort} to ${conn.toNode.name}:${conn.toPort}`);
+                        conn.toNode.updateInputShape(conn.toPort, sourceSpec.shape);
+                    }
+                }
+            }
+        }
+
+        // If no shapes changed in this pass, we're done
+        if (!anyShapeChanged) {
+            console.log(`DEBUG: No shapes changed in pass ${pass + 1}, stopping`);
+            break;
+        }
+    }
+
+    // Final validation: check that all shapes are resolved
+    for (const node of executionOrder) {
+        for (const [outputPort, spec] of node.outputs) {
+            if (spec.shape.includes(-1)) {
+                const inputShapes = JSON.stringify(Object.fromEntries(node.inputs), null, 2);
+                throw new Error(
+                    `Compiler error: Node '${node.name}' failed to resolve its output shape for port '${outputPort}'. Current input shapes for this node:\n${inputShapes}`
+                );
+            }
+        }
+    }
+}
+
   generateKernelCode(graph: CudaGraph, paramNames: string[]): { kernelCode: string, workspaceSize: number } {
     const executionOrder = graph.getExecutionOrder();
-    for (const node of executionOrder) {
-      node.resolveShapes();
-    }
-    const uniqueDeviceCodes = new Set(executionOrder.map(node => node.deviceCode));
-    const nodeDeviceCodes = Array.from(uniqueDeviceCodes).join("\n\n");
-
-    const tensorRegistry = new Map<string, { varName: string, spec: { shape: number[], dtype: string } }>();
-    const variableDeclarations: string[] = [];
     
-    // --- 1. Identify Graph Inputs and Outputs & Populate Registry ---
-    const graphInputs = new Map<string, { node: CudaNode, port: string }>();
-    const graphOutputs = new Map<string, { node: CudaNode, port: string }>();
-    const allNodeInputs = new Set<string>();
-    const allNodeOutputs = new Set<string>();
+    const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
 
-    for (const conn of graph.connections) {
-      allNodeInputs.add(`${conn.toNode.id}:${conn.toPort}`);
-      allNodeOutputs.add(`${conn.fromNode.id}:${conn.fromPort}`);
+    const uniqueKernels = new Map<string, { code: string, node: CudaNode }>();
+    for (const node of executionOrder) {
+        if (!uniqueKernels.has(node.functionName)) {
+            uniqueKernels.set(node.functionName, { code: node.deviceCode, node });
+        }
+    }
+    const kernelDefinitions = Array.from(uniqueKernels.values()).map(k => k.code).join('\n\n');
+
+    const executionCalls: string[] = [];
+    for (const node of executionOrder) {
+        const outputTensors = new Map<string, string>();
+        for (const [outputPort] of node.outputs) {
+            const key = `${node.id}:${outputPort}`;
+            const tensorInfo = tensorRegistry.get(key);
+            if (!tensorInfo) throw new Error(`Compiler Error: Could not find output tensor for ${node.name}:${outputPort}`);
+            outputTensors.set(outputPort, tensorInfo.varName);
+        }
+
+        const inputTensors = new Map<string, string>();
+        for (const [inputPort] of node.inputs) {
+            const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
+            const sourceKey = conn ? `${conn.fromNode.id}:${conn.fromPort}` : `${node.id}:${inputPort}`;
+            const tensorInfo = tensorRegistry.get(sourceKey);
+            if (!tensorInfo) throw new Error(`Compiler Error: Could not find source tensor for ${node.name}:${inputPort}`);
+            inputTensors.set(inputPort, tensorInfo.varName);
+        }
+
+        const kernelArgs = [
+            ...Array.from(node.outputs.keys()).map(name => outputTensors.get(name)),
+            ...Array.from(node.inputs.keys()).map(name => inputTensors.get(name)),
+            ...Array.from(node.parameters.keys())
+        ].join(', ');
+
+        const gridDim = "dim3(1, 1, 1)";
+        const blockDim = "dim3(256, 1, 1)";
+        
+        executionCalls.push(`  ${node.functionName}<<<${gridDim}, ${blockDim}>>>(${kernelArgs});`);
     }
 
-    for (const node of graph.nodes.values()) {
-      for (const [inputPort, spec] of node.inputs) {
-        if (!allNodeInputs.has(`${node.id}:${inputPort}`)) {
-          graphInputs.set(inputPort, { node, port: inputPort });
-          tensorRegistry.set(`${node.id}:${inputPort}`, { varName: inputPort, spec });
-        }
-      }
-      for (const [outputPort, spec] of node.outputs) {
-        if (!allNodeOutputs.has(`${node.id}:${outputPort}`)) {
-          graphOutputs.set(outputPort, { node, port: outputPort });
-          tensorRegistry.set(`${node.id}:${outputPort}`, { varName: outputPort, spec });
-        }
-      }
+    const graphInputs = graph.getGraphInputs();
+    const graphOutputs = this.getGraphOutputs(graph);
+    
+    const getTensorParams = (name: string) => [`float* ${name}_data`, `const int* ${name}_shape`, `int ${name}_dims`];
+    const inputParams = Array.from(graphInputs.keys()).flatMap(getTensorParams);
+    const outputParams = Array.from(graphOutputs.keys()).flatMap(getTensorParams);
+    const parameterParams = paramNames.flatMap(getTensorParams);
+    const hostFunctionSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
+
+    const tensorStruct = `
+template<typename T>
+struct Tensor {
+  T* data;
+  const int* shape;
+  int dims;
+
+  __device__ inline T& operator()(int i) { return data[i]; }
+  __device__ inline T& operator()(int i, int j) { return data[i * shape[1] + j]; }
+  __device__ inline T& operator()(int i, int j, int k) { return data[(i * shape[1] + j) * shape[2] + k]; }
+};
+`;
+    
+    const tensorInstantiations: string[] = [];
+    const variableDeclarations: string[] = [];
+    let intermediateIdx = 0;
+    for (const [key, tensorInfo] of intermediateTensors.entries()) {
+        const varName = `intermediate_${intermediateIdx}`;
+        const shapeVar = `${varName}_shape`;
+        const tensorVar = `${varName}_tensor`;
+        variableDeclarations.push(`  const int ${shapeVar}[] = {${tensorInfo.spec.shape.join(', ')}};`);
+        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {(float*)(workspace + ${tensorInfo.offset}), ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+        tensorRegistry.set(key, { varName: tensorVar, spec: tensorInfo.spec });
+        intermediateIdx++;
     }
 
-    // --- 2. Liveness Analysis & Memory Planning ---
+    const allGraphTensors = [...graphInputs.keys(), ...graphOutputs.keys(), ...paramNames];
+    for (const name of allGraphTensors) {
+        tensorInstantiations.push(`  Tensor<float> ${name} = {${name}_data, ${name}_shape, ${name}_dims};`);
+    }
+
+    const kernelCode = `
+#include <cuda_runtime.h>
+#include <math.h>
+
+${tensorStruct}
+
+// ======================================================
+// Kernel Definitions
+// ======================================================
+${kernelDefinitions}
+
+// ======================================================
+// Main Host-Side Execution Function
+// ======================================================
+extern "C" void executeGraph(
+  ${hostFunctionSignatureParams.join(",\n  ")}
+) {
+  // --- Variable Declarations ---
+${variableDeclarations.join("\n")}
+
+  // --- Tensor Struct Instantiation ---
+${tensorInstantiations.join("\n")}
+
+  // --- Kernel Launch Sequence ---
+${executionCalls.join("\n")}
+  // --- End Execution Flow ---
+}
+    `;
+
+    return { kernelCode, workspaceSize };
+  }
+
+  private getGraphOutputs(graph: CudaGraph): Map<string, { node: CudaNode; port: string }> {
+      const graphOutputs = new Map<string, { node: CudaNode; port: string }>();
+      const allNodeOutputs = new Set<string>();
+      for (const conn of graph.connections) {
+          allNodeOutputs.add(`${conn.fromNode.id}:${conn.fromPort}`);
+      }
+      for (const node of graph.nodes.values()) {
+          for (const [outputPort, spec] of node.outputs) {
+              if (!allNodeOutputs.has(`${node.id}:${outputPort}`)) {
+                  graphOutputs.set(outputPort, { node, port: outputPort });
+              }
+          }
+      }
+      return graphOutputs;
+  }
+
+  private planMemory(graph: CudaGraph, executionOrder: CudaNode[]): {
+      intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>,
+      workspaceSize: number,
+      tensorRegistry: Map<string, { varName: string, spec: { shape: number[], dtype: string } }>
+  } {
+    const tensorRegistry = new Map<string, { varName: string, spec: { shape: number[], dtype: string } }>();
+    const graphInputs = graph.getGraphInputs();
+    const graphOutputs = this.getGraphOutputs(graph);
+
+    for (const [inputPort, { node, port }] of graphInputs.entries()) {
+      tensorRegistry.set(`${node.id}:${port}`, { varName: inputPort, spec: node.inputs.get(port)! });
+    }
+    for (const [outputPort, { node, port }] of graphOutputs.entries()) {
+      tensorRegistry.set(`${node.id}:${outputPort}`, { varName: outputPort, spec: node.outputs.get(port)! });
+    }
+
     const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>();
     executionOrder.forEach((node, i) => {
         for (const [outputPort, spec] of node.outputs) {
             const key = `${node.id}:${outputPort}`;
             if (spec.shape.includes(-1)) {
-                throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for output '${outputPort}' of node '${node.name}'. Ensure all graph inputs are connected and shapes are propagated.`);
+                const inputShapes = JSON.stringify(Array.from(node.inputs.entries()));
+                throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for output '${outputPort}' of node '${node.name}'. Node inputs: ${inputShapes}`);
             }
-            if (!tensorRegistry.has(key)) { // It's an intermediate tensor
+            if (!tensorRegistry.has(key)) {
                 const size = spec.shape.reduce((a, b) => a * b, 1) * 4; // size in bytes
-                intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 }); // liveEnd starts at i
+                intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 });
             }
         }
         for (const [inputPort, spec] of node.inputs) {
             if (spec.shape.includes(-1)) {
-                 throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for input '${inputPort}' of node '${node.name}'. Ensure all graph inputs are connected and shapes are propagated.`);
+                 throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for input '${inputPort}' of node '${node.name}'.`);
             }
             const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
             if (conn) {
@@ -349,112 +548,6 @@ export class CudaGraphCompiler {
             blocks.push({start: tensor.offset, end: tensor.liveEnd, size: tensor.size});
         }
     }
-
-    // --- 3. Build Final Kernel Code ---
-    const tensorStruct = `
-template<typename T>
-struct Tensor {
-  T* data;
-  const int* shape;
-  int dims;
-
-  __device__ inline T& operator()(int i) {
-    return data[i];
-  }
-
-  __device__ inline T& operator()(int i, int j) {
-    return data[i * shape[1] + j];
-  }
-
-  __device__ inline T& operator()(int i, int j, int k) {
-    return data[(i * shape[1] + j) * shape[2] + k];
-  }
-};
-`;
-    const tensorInstantiations: string[] = [];
-    
-    // Register and create instantiations for intermediate tensors
-    let intermediateIdx = 0;
-    for (const [key, tensorInfo] of intermediateTensors.entries()) {
-        const varName = `intermediate_${intermediateIdx}`;
-        const shapeVar = `${varName}_shape`;
-        const tensorVar = `${varName}_tensor`;
-        variableDeclarations.push(`  const int ${shapeVar}[] = {${tensorInfo.spec.shape.join(', ')}};`);
-        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {(float*)(workspace + ${tensorInfo.offset}), ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
-        tensorRegistry.set(key, { varName: tensorVar, spec: tensorInfo.spec });
-        intermediateIdx++;
-    }
-
-    // Create instantiations for graph I/O and parameters
-    const allGraphTensors = [...graphInputs.keys(), ...graphOutputs.keys(), ...paramNames];
-    for (const name of allGraphTensors) {
-        tensorInstantiations.push(`  Tensor<float> ${name} = {${name}_data, ${name}_shape, ${name}_dims};`);
-    }
-
-    // --- 4. Generate Execution Flow ---
-    const executionFlow: string[] = [];
-    for (const node of executionOrder) {
-      const inputTensors = new Map<string, string>();
-      const outputTensors = new Map<string, string>();
-
-      for (const [inputPort] of node.inputs) {
-        const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
-        const sourceKey = conn ? `${conn.fromNode.id}:${conn.fromPort}` : `${node.id}:${inputPort}`;
-        const tensorInfo = tensorRegistry.get(sourceKey);
-        if (!tensorInfo) throw new Error(`Compiler error: Could not find source tensor for ${node.name}:${inputPort}`);
-        inputTensors.set(inputPort, tensorInfo.varName);
-      }
-
-      for (const [outputPort] of node.outputs) {
-        const key = `${node.id}:${outputPort}`;
-        const tensorInfo = tensorRegistry.get(key);
-        if (!tensorInfo) throw new Error(`Compiler error: Could not find output tensor for ${node.name}:${outputPort}`);
-        outputTensors.set(outputPort, tensorInfo.varName);
-      }
-      
-      const call = node.getKernelCall(outputTensors, inputTensors);
-      executionFlow.push(`  ${call}`);
-    }
-
-    // --- 5. Assemble Final Kernel ---
-    const getTensorParams = (name: string) => [`float* ${name}_data`, `const int* ${name}_shape`, `int ${name}_dims`];
-    const inputParams = Array.from(graphInputs.keys()).flatMap(getTensorParams);
-    const outputParams = Array.from(graphOutputs.keys()).flatMap(getTensorParams);
-    const parameterParams = paramNames.flatMap(getTensorParams);
-    const kernelSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
-
-    const kernelCode = `
-#include <cuda_runtime.h>
-#include <math.h>
-
-${tensorStruct}
-
-// ======================================================
-// Node Device Functions
-// ======================================================
-${nodeDeviceCodes}
-
-// ======================================================
-// Main Fused Graph Kernel
-// ======================================================
-extern "C" __global__ void executeGraph(
-  ${kernelSignatureParams.join(",\n  ")}
-) {
-  // TODO: Implement tensor-based indexing
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  // --- Variable Declarations ---
-${variableDeclarations.join("\n")}
-
-  // --- Tensor Struct Instantiation ---
-${tensorInstantiations.join("\n")}
-
-  // --- Generated Execution Flow ---
-  ${executionFlow.join("\n  ")}
-  // --- End Execution Flow ---
-}
-    `;
-
-    return { kernelCode, workspaceSize };
+    return { intermediateTensors, workspaceSize, tensorRegistry };
   }
 }

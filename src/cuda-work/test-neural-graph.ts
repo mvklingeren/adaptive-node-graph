@@ -6,9 +6,9 @@
 // network on the GPU.
 // ============================================================================
 
-import { MockCudaRuntime } from "./cuda-abstractions";
-import { CudaGraphCompiler } from "./cuda-graph";
-import { NeuralGraph, DenseLayer, ReLULayer } from "./neural-network";
+import { MockCudaRuntime } from "./cuda-abstractions.js";
+import { CudaGraphCompiler } from "./cuda-graph.js";
+import { NeuralGraph, DenseLayer, ReLULayer } from "./neural-network.js";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -40,8 +40,14 @@ async function main() {
 
   // 5. Compile the entire graph into a single CUDA kernel.
   console.log("\nCompiling graph to a single CUDA kernel...");
+  
+  const batchSize = 64;
+  const inputShapes = new Map([
+    ["input", [batchSize, 784]],
+  ]);
+  
   // The compiler now returns the required workspace size for intermediate tensors.
-  const { kernel, parameters, kernelCode, workspaceSize } = await compiler.compile(model);
+  const { kernel, parameters, kernelCode, workspaceSize } = await compiler.compile(model, inputShapes);
 
   console.log("\nCompilation complete.");
   console.log(`- Generated Kernel ID: ${kernel.id}`);
@@ -58,7 +64,6 @@ async function main() {
 
   // 7. Prepare for execution (simulation).
   console.log("\nSimulating execution...");
-  const batchSize = 64;
   const inputData = new Float32Array(batchSize * 784).fill(1.0);
   const outputData = new Float32Array(batchSize * 10);
 
