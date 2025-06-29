@@ -55,9 +55,10 @@ export class EmbeddingLayer implements Layer {
         const batchSize = inputShape[0];
         // Only resolve if we have a concrete batch size
         if (batchSize === -1) {
-          // Return the current output shape unchanged if batch size is still dynamic
+          // Return empty map if batch size is still dynamic
           return new Map();
         }
+        // Resolve output shape when we have a concrete batch size
         return new Map([
           ["output", { shape: [batchSize, this.maxLen, this.embedDim] }],
         ]);

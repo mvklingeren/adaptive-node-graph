@@ -126,51 +126,89 @@ export class SoftmaxLayer implements Layer {
        */
       void softmax_forward(Tensor<float> output, Tensor<float> input) {
         // This kernel computes softmax over the last dimension.
-        // It assumes a 4D tensor like [batch, heads, seq, seq]
-        // One block per vector to be softmaxed.
+        // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
         extern __shared__ float shared_mem[];
-        int batch_idx = blockIdx.z;
-        int head_idx = blockIdx.y;
-        int row_idx = blockIdx.x;
-        int size = input.shape[3];
         int tid = threadIdx.x;
+        
+        if (input.dims == 2) {
+          // Handle 2D case: [batch, features]
+          int batch_idx = blockIdx.x;
+          int size = input.shape[1];
+          
+          // 1. Find max for numerical stability
+          float max_val = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              max_val = fmaxf(max_val, input(batch_idx, i));
+          }
+          shared_mem[tid] = max_val;
+          __syncthreads();
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
+              __syncthreads();
+          }
+          max_val = shared_mem[0];
 
-        // 1. Find max for numerical stability
-        float max_val = -FLT_MAX;
-        for (int i = tid; i < size; i += blockDim.x) {
-            max_val = fmaxf(max_val, input(batch_idx, head_idx, row_idx, i));
-        }
-        shared_mem[tid] = max_val;
-        __syncthreads();
-        for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-            if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
-            __syncthreads();
-        }
-        max_val = shared_mem[0];
+          // 2. Calculate sum of exps
+          float sum_exp = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              sum_exp += expf(input(batch_idx, i) - max_val);
+          }
+          shared_mem[tid] = sum_exp;
+          __syncthreads();
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
+              __syncthreads();
+          }
+          sum_exp = shared_mem[0];
 
-        // 2. Calculate sum of exps
-        float sum_exp = 0.0f;
-        for (int i = tid; i < size; i += blockDim.x) {
-            sum_exp += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
-        }
-        shared_mem[tid] = sum_exp;
-        __syncthreads();
-        for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-            if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
-            __syncthreads();
-        }
-        sum_exp = shared_mem[0];
+          // 3. Calculate softmax
+          for (int i = tid; i < size; i += blockDim.x) {
+              output(batch_idx, i) = expf(input(batch_idx, i) - max_val) / sum_exp;
+          }
+        } else {
+          // Handle 4D case: [batch, heads, seq, seq]
+          int batch_idx = blockIdx.z;
+          int head_idx = blockIdx.y;
+          int row_idx = blockIdx.x;
+          int size = input.shape[3];
 
-        // 3. Calculate softmax
-        for (int i = tid; i < size; i += blockDim.x) {
-            output(batch_idx, head_idx, row_idx, i) = expf(input(batch_idx, head_idx, row_idx, i) - max_val) / sum_exp;
+          // 1. Find max for numerical stability
+          float max_val = -FLT_MAX;
+          for (int i = tid; i < size; i += blockDim.x) {
+              max_val = fmaxf(max_val, input(batch_idx, head_idx, row_idx, i));
+          }
+          shared_mem[tid] = max_val;
+          __syncthreads();
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
+              __syncthreads();
+          }
+          max_val = shared_mem[0];
+
+          // 2. Calculate sum of exps
+          float sum_exp = 0.0f;
+          for (int i = tid; i < size; i += blockDim.x) {
+              sum_exp += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
+          }
+          shared_mem[tid] = sum_exp;
+          __syncthreads();
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
+              __syncthreads();
+          }
+          sum_exp = shared_mem[0];
+
+          // 3. Calculate softmax
+          for (int i = tid; i < size; i += blockDim.x) {
+              output(batch_idx, head_idx, row_idx, i) = expf(input(batch_idx, head_idx, row_idx, i) - max_val) / sum_exp;
+          }
         }
       }
     `;
 
     const softmaxNode = new CudaNode(deviceCode, "softmax_forward")
-      .addInput("input", [-1, -1, -1, -1], "float32")
-      .addOutput("output", [-1, -1, -1, -1], "float32")
+      .addInput("input", [-1, -1], "float32") // Start with 2D, will be resolved dynamically
+      .addOutput("output", [-1, -1], "float32")
       .setShapeResolver((inputs) => {
         const inputShape = inputs.get("input")!.shape;
         return new Map([["output", { shape: inputShape }]]);

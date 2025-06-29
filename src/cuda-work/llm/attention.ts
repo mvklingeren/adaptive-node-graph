@@ -29,10 +29,10 @@ export class ScaledDotProductAttention implements Layer {
     const softmaxLayer = new SoftmaxLayer();
     const matmul_sv = new BatchedMatMul(false); // No transpose for SV
 
-    // Build the graph segment for attention
+    // Build the graph segment for attention with proper connections
     const qkNode = matmul_qk.addToGraph(graph, q, k);
-    const scaleNode = scaleLayer.addToGraph(graph, qkNode);
-    const softmaxNode = softmaxLayer.addToGraph(graph, scaleNode);
+    const scaleNode = graph.addLayer(scaleLayer, qkNode);
+    const softmaxNode = graph.addLayer(softmaxLayer, scaleNode);
     const svNode = matmul_sv.addToGraph(graph, softmaxNode, v);
 
     return svNode;

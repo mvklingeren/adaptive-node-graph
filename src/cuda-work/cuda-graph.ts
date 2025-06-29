@@ -160,13 +160,30 @@ export class CudaGraph {
       allNodeInputs.add(`${conn.toNode.id}:${conn.toPort}`);
     }
 
+    const unconnectedInputs: Array<{ node: CudaNode; port: string; key: string }> = [];
+    
     for (const node of this.nodes.values()) {
       for (const [inputPort, spec] of node.inputs) {
-        if (!allNodeInputs.has(`${node.id}:${inputPort}`)) {
-          graphInputs.set(inputPort, { node, port: inputPort });
+        const key = `${node.id}:${inputPort}`;
+        const isConnected = allNodeInputs.has(key);
+        if (!isConnected) {
+          unconnectedInputs.push({ node, port: inputPort, key });
         }
       }
     }
+    
+    // For now, we'll prioritize the embedding layer as the main graph input
+    // In a more sophisticated system, we might need better logic to determine
+    // which unconnected inputs are actual graph inputs vs internal disconnected nodes
+    const embeddingInput = unconnectedInputs.find(input => input.node.name === 'embedding_forward');
+    if (embeddingInput) {
+      graphInputs.set(embeddingInput.port, { node: embeddingInput.node, port: embeddingInput.port });
+    } else if (unconnectedInputs.length > 0) {
+      // Fallback: use the first unconnected input
+      const firstInput = unconnectedInputs[0];
+      graphInputs.set(firstInput.port, { node: firstInput.node, port: firstInput.port });
+    }
+    
     return graphInputs;
   }
 
@@ -255,9 +272,6 @@ export class CudaGraphCompiler {
 
   private _setAndPropagateShapes(graph: CudaGraph, inputShapes: Map<string, number[]>): void {
     const graphInputs = graph.getGraphInputs();
-    
-    console.log("DEBUG: Input shapes provided:", Array.from(inputShapes.entries()));
-    console.log("DEBUG: Graph inputs found:", Array.from(graphInputs.entries()).map(([name, info]) => [name, info.node.name, info.port]));
 
     // First, find a concrete batch size if one is provided.
     let batchSize = -1;
@@ -272,19 +286,13 @@ export class CudaGraphCompiler {
     if (batchSize === -1) {
         batchSize = 1;
     }
-    
-    console.log("DEBUG: Resolved batch size:", batchSize);
 
     // Update all graph inputs with the resolved batch size.
     for (const [inputName, shape] of inputShapes.entries()) {
         const finalShape = shape.map(dim => dim === -1 ? batchSize : dim);
         const inputInfo = graphInputs.get(inputName);
-        console.log(`DEBUG: Processing input '${inputName}' with shape [${shape}] -> [${finalShape}]`);
         if (inputInfo) {
-            console.log(`DEBUG: Found graph input '${inputName}' on node '${inputInfo.node.name}' port '${inputInfo.port}'`);
-            console.log(`DEBUG: Before update - node input shape:`, inputInfo.node.inputs.get(inputInfo.port));
             inputInfo.node.updateInputShape(inputInfo.port, finalShape);
-            console.log(`DEBUG: After update - node input shape:`, inputInfo.node.inputs.get(inputInfo.port));
         } else {
             console.warn(`Graph input port named '${inputName}' not found.`);
         }
@@ -296,12 +304,9 @@ export class CudaGraphCompiler {
     // to resolve their shapes as upstream shapes become available.
     let maxPasses = 3;
     for (let pass = 0; pass < maxPasses; pass++) {
-        console.log(`DEBUG: Shape resolution pass ${pass + 1}`);
         let anyShapeChanged = false;
 
         for (const node of executionOrder) {
-            console.log(`DEBUG: Processing node '${node.name}' with inputs:`, Array.from(node.inputs.entries()));
-            
             // Store the current output shapes to detect changes
             const oldOutputShapes = new Map();
             for (const [port, spec] of node.outputs) {
@@ -310,8 +315,6 @@ export class CudaGraphCompiler {
 
             // Resolve the node's own output shapes based on its now-finalized inputs.
             node.resolveShapes();
-            
-            console.log(`DEBUG: After resolveShapes, node '${node.name}' outputs:`, Array.from(node.outputs.entries()));
 
             // Check if any output shapes changed
             for (const [port, spec] of node.outputs) {
@@ -326,7 +329,6 @@ export class CudaGraphCompiler {
                 if (conn.fromNode.id === node.id) {
                     const sourceSpec = node.outputs.get(conn.fromPort);
                     if (sourceSpec) {
-                        console.log(`DEBUG: Propagating shape [${sourceSpec.shape}] from ${conn.fromNode.name}:${conn.fromPort} to ${conn.toNode.name}:${conn.toPort}`);
                         conn.toNode.updateInputShape(conn.toPort, sourceSpec.shape);
                     }
                 }
@@ -335,7 +337,6 @@ export class CudaGraphCompiler {
 
         // If no shapes changed in this pass, we're done
         if (!anyShapeChanged) {
-            console.log(`DEBUG: No shapes changed in pass ${pass + 1}, stopping`);
             break;
         }
     }
@@ -358,6 +359,18 @@ export class CudaGraphCompiler {
     
     const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
 
+    // Add intermediate tensors to the registry BEFORE processing nodes
+    const variableDeclarations: string[] = [];
+    let intermediateIdx = 0;
+    for (const [key, tensorInfo] of intermediateTensors.entries()) {
+        const varName = `intermediate_${intermediateIdx}`;
+        const shapeVar = `${varName}_shape`;
+        const tensorVar = `${varName}_tensor`;
+        variableDeclarations.push(`  const int ${shapeVar}[] = {${tensorInfo.spec.shape.join(', ')}};`);
+        tensorRegistry.set(key, { varName: tensorVar, spec: tensorInfo.spec });
+        intermediateIdx++;
+    }
+
     const uniqueKernels = new Map<string, { code: string, node: CudaNode }>();
     for (const node of executionOrder) {
         if (!uniqueKernels.has(node.functionName)) {
@@ -372,7 +385,9 @@ export class CudaGraphCompiler {
         for (const [outputPort] of node.outputs) {
             const key = `${node.id}:${outputPort}`;
             const tensorInfo = tensorRegistry.get(key);
-            if (!tensorInfo) throw new Error(`Compiler Error: Could not find output tensor for ${node.name}:${outputPort}`);
+            if (!tensorInfo) {
+                throw new Error(`Compiler Error: Could not find output tensor for ${node.name}:${outputPort} (key: ${key})`);
+            }
             outputTensors.set(outputPort, tensorInfo.varName);
         }
 
@@ -381,7 +396,9 @@ export class CudaGraphCompiler {
             const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
             const sourceKey = conn ? `${conn.fromNode.id}:${conn.fromPort}` : `${node.id}:${inputPort}`;
             const tensorInfo = tensorRegistry.get(sourceKey);
-            if (!tensorInfo) throw new Error(`Compiler Error: Could not find source tensor for ${node.name}:${inputPort}`);
+            if (!tensorInfo) {
+                throw new Error(`Compiler Error: Could not find source tensor for ${node.name}:${inputPort} (key: ${sourceKey})`);
+            }
             inputTensors.set(inputPort, tensorInfo.varName);
         }
 
@@ -420,15 +437,14 @@ struct Tensor {
 `;
     
     const tensorInstantiations: string[] = [];
-    const variableDeclarations: string[] = [];
-    let intermediateIdx = 0;
+    
+    // Create tensor instantiations for intermediate tensors
+    intermediateIdx = 0;
     for (const [key, tensorInfo] of intermediateTensors.entries()) {
         const varName = `intermediate_${intermediateIdx}`;
         const shapeVar = `${varName}_shape`;
         const tensorVar = `${varName}_tensor`;
-        variableDeclarations.push(`  const int ${shapeVar}[] = {${tensorInfo.spec.shape.join(', ')}};`);
         tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {(float*)(workspace + ${tensorInfo.offset}), ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
-        tensorRegistry.set(key, { varName: tensorVar, spec: tensorInfo.spec });
         intermediateIdx++;
     }
 
