@@ -7,7 +7,7 @@
 // ============================================================================
 
 import { MockCudaRuntime } from "./cuda-abstractions.js";
-import { CudaGraphCompiler } from "./cuda-graph.js";
+import { CudaGraphCompiler, CudaNode } from "./cuda-graph.js";
 import { NeuralGraph, DenseLayer, ReLULayer } from "./neural-network.js";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -21,29 +21,35 @@ async function main() {
   console.log("\nBuilding a simple Neural Graph...");
   // 1. Create a new NeuralGraph.
   const model = new NeuralGraph("SimpleMLP");
+  
+  // 2. Define batch size
+  const batchSize = 64;
 
-  // 2. Create the layers.
+  // 3. Create the layers.
   const denseLayer1 = new DenseLayer(runtime, 784, 256);
   const reluLayer1 = new ReLULayer();
   const denseLayer2 = new DenseLayer(runtime, 256, 10);
 
-  // 3. Initialize the stateful layers (allocates weights on GPU).
+  // 4. Initialize the stateful layers (allocates weights on GPU).
   console.log("Initializing layer parameters on the mock GPU...");
   await denseLayer1.initialize();
   await denseLayer2.initialize();
 
-  // 4. Add layers to the model. They are automatically connected in sequence.
-  model.addLayer(denseLayer1);
+  // 5. Create an input node for the first layer
+  const inputNode = new CudaNode("", "input_node")
+    .addOutput('output', [batchSize, 784], 'float32');
+  model.addNode(inputNode);
+
+  // 6. Add layers to the model. They are automatically connected in sequence.
+  model.addLayer(denseLayer1, inputNode);
   model.addLayer(reluLayer1);
   model.addLayer(denseLayer2);
   console.log("Neural Graph built successfully.");
 
-  // 5. Compile the entire graph into a single CUDA kernel.
+  // 7. Compile the entire graph into a single CUDA kernel.
   console.log("\nCompiling graph to a single CUDA kernel...");
-  
-  const batchSize = 64;
   const inputShapes = new Map([
-    ["input", [batchSize, 784]],
+    ["output", [batchSize, 784]], // The input node's output port is named "output"
   ]);
   
   // The compiler now returns the required workspace size for intermediate tensors.

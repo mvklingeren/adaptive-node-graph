@@ -402,7 +402,8 @@ export class CudaGraphCompiler {
 
     const uniqueKernels = new Map<string, { code: string, node: CudaNode }>();
     for (const node of executionOrder) {
-        if (!uniqueKernels.has(node.functionName)) {
+        // Skip nodes with empty device code (like input nodes)
+        if (node.deviceCode.trim() && !uniqueKernels.has(node.functionName)) {
             uniqueKernels.set(node.functionName, { code: node.deviceCode, node });
         }
     }
@@ -410,6 +411,10 @@ export class CudaGraphCompiler {
 
     const executionCalls: string[] = [];
     for (const node of executionOrder) {
+        // Skip nodes with empty device code (like input nodes)
+        if (!node.deviceCode.trim()) {
+            continue;
+        }
         const outputTensors = new Map<string, string>();
         for (const [outputPort] of node.outputs) {
             const key = `${node.id}:${outputPort}`;

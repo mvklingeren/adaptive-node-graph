@@ -1,6 +1,8 @@
 
 #include <cuda_runtime.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // CUDA Error Checking Macro
 #define CUDA_CHECK(call) do {     cudaError_t err = call;     if (err != cudaSuccess) {         fprintf(stderr, "CUDA error at %s:%d - %s\n", __FILE__, __LINE__,                 cudaGetErrorString(err));         exit(1);     } } while(0)
@@ -9,8 +11,10 @@
 // Debug mode bounds checking (can be disabled for release builds)
 #ifndef NDEBUG
 #define TENSOR_BOUNDS_CHECK 1
+#define TENSOR_BOUNDS_CHECK_VERBOSE 1  // Enable verbose error messages in debug mode
 #else
 #define TENSOR_BOUNDS_CHECK 0
+#define TENSOR_BOUNDS_CHECK_VERBOSE 0
 #endif
 
 template<typename T>
@@ -22,8 +26,12 @@ struct Tensor {
   __device__ inline T& operator()(int i) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 1 || i < 0 || i >= shape[0]) {
-      printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\n", i, shape[0], dims);
-      return data[0]; // Safe fallback to prevent crashes
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
+      printf("FATAL: Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\n", i, shape[0], dims);
+      #endif
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[i]; 
@@ -32,9 +40,13 @@ struct Tensor {
   __device__ inline T& operator()(int i, int j) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
-      printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\n", 
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
+      printf("FATAL: Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\n", 
              i, j, shape[0], shape[1], dims);
-      return data[0]; // Safe fallback to prevent crashes
+      #endif
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[i * shape[1] + j]; 
@@ -43,9 +55,13 @@ struct Tensor {
   __device__ inline T& operator()(int i, int j, int k) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
-      printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
+      printf("FATAL: Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
              i, j, k, shape[0], shape[1], shape[2], dims);
-      return data[0]; // Safe fallback to prevent crashes
+      #endif
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[(i * shape[1] + j) * shape[2] + k]; 
@@ -55,9 +71,13 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 4 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || 
         k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
-      printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
+      printf("FATAL: Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
-      return data[0]; // Safe fallback to prevent crashes
+      #endif
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
@@ -75,43 +95,85 @@ struct Tensor {
 
 
 // ======================================================
+// Dynamic Memory Allocator
+// ======================================================
+class WorkspaceAllocator {
+private:
+    char* base_ptr;
+    size_t current_offset;
+    size_t total_size;
+    
+    // Helper to align to 256-byte boundaries for optimal GPU performance
+    inline size_t align_to_256_bytes(size_t size) const {
+        return (size + 255) & ~255;
+    }
+    
+public:
+    WorkspaceAllocator(char* workspace, size_t workspace_size) 
+        : base_ptr(workspace), current_offset(0), total_size(workspace_size) {}
+    
+    void* allocate(size_t size) {
+        size_t aligned_size = align_to_256_bytes(size);
+        
+        if (current_offset + aligned_size > total_size) {
+            fprintf(stderr, "ERROR: Workspace allocator out of memory. Requested: %zu bytes (aligned: %zu), Available: %zu bytes\n", 
+                    size, aligned_size, total_size - current_offset);
+            return nullptr;
+        }
+        
+        void* ptr = base_ptr + current_offset;
+        current_offset += aligned_size;
+        return ptr;
+    }
+    
+    size_t get_used_size() const {
+        return current_offset;
+    }
+    
+    void reset() {
+        current_offset = 0;
+    }
+};
+
+// ======================================================
 // Kernel Definitions
 // ======================================================
 
       /**
        * @cuda global
+       * Performs a dense layer transformation on a 2D tensor.
+       * Input: [batch, input_features]
+       * Output: [batch, output_features]
        */
-      __global__ void dense_forward(
+      __global__ void dense_forward_2d(
         Tensor<float> output, 
         Tensor<float> input, 
         Tensor<float> weights, 
         Tensor<float> bias
       ) {
-        // Each thread computes one output element.
-        // Grid: (output_features / threads_per_block, batch_size)
-        // Block: (threads_per_block)
         int batch_idx = blockIdx.y;
         int output_feature_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (batch_idx < input.shape[0] && output_feature_idx < output.shape[1]) {
           float sum = 0.0f;
-          for (int k = 0; k < input.shape[1]; ++k) {
+          for (int k = 0; k < input.shape[1]; ++k) { // Iterate over input_features
             sum += input(batch_idx, k) * weights(k, output_feature_idx);
           }
           output(batch_idx, output_feature_idx) = sum + bias(output_feature_idx);
         }
       }
-    
+      
 
 
       /**
        * @cuda global
-       * Optimized ReLU kernel with precomputed size to avoid redundant calculations
+       * Optimized ReLU kernel that calculates size dynamically
        */
-      __global__ void relu_forward(Tensor<float> output, Tensor<float> input, int total_elements) {
+      __global__ void relu_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        int total_elements = input.total_elements();
         if (idx < total_elements) {
-          output(idx) = fmaxf(0.0f, input(idx));
+          output.data[idx] = fmaxf(0.0f, input.data[idx]);
         }
       }
     
@@ -120,9 +182,6 @@ struct Tensor {
 // Main Host-Side Execution Function
 // ======================================================
 extern "C" void executeGraph(
-  float* input_data,
-  const int* input_shape,
-  int input_dims,
   float* output_data,
   const int* output_shape,
   int output_dims,
@@ -147,24 +206,27 @@ extern "C" void executeGraph(
     return;
   }
   
-  if (workspace_size < 131072) {
-    fprintf(stderr, "Error: Insufficient workspace size. Got %zu, need at least 131072 bytes\n", workspace_size);
-    return;
-  }
-
-  // --- Memory Alignment Helper ---
-  auto align_to_256_bytes = [](size_t offset) -> size_t {
-    return (offset + 255) & ~255;
-  };
+  // Note: We no longer check for exact workspace size since we're using dynamic allocation
+  // The allocator will report if we run out of space
+  
+  // --- Initialize Dynamic Memory Allocator ---
+  WorkspaceAllocator allocator(workspace, workspace_size);
 
   // --- Variable Declarations ---
-  const int intermediate_0_shape[] = {64, 256};
+  const int intermediate_0_shape[] = {64, 784};
   const int intermediate_1_shape[] = {64, 256};
+  const int intermediate_2_shape[] = {64, 256};
 
   // --- Tensor Struct Instantiation ---
-  Tensor<float> intermediate_0_tensor = {(float*)(workspace + 0), intermediate_0_shape, 2};
-  Tensor<float> intermediate_1_tensor = {(float*)(workspace + 65536), intermediate_1_shape, 2};
-  Tensor<float> input = {(float*)input_data, input_shape, input_dims};
+  float* intermediate_0_data = (float*)allocator.allocate(200704);
+  if (!intermediate_0_data) { fprintf(stderr, "Failed to allocate memory for intermediate_0\n"); return; }
+  Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 2};
+  float* intermediate_1_data = (float*)allocator.allocate(65536);
+  if (!intermediate_1_data) { fprintf(stderr, "Failed to allocate memory for intermediate_1\n"); return; }
+  Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 2};
+  float* intermediate_2_data = (float*)allocator.allocate(65536);
+  if (!intermediate_2_data) { fprintf(stderr, "Failed to allocate memory for intermediate_2\n"); return; }
+  Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 2};
   Tensor<float> output = {output_data, output_shape, output_dims};
   Tensor<float> param_0_weights = {param_0_weights_data, param_0_weights_shape, param_0_weights_dims};
   Tensor<float> param_1_bias = {param_1_bias_data, param_1_bias_shape, param_1_bias_dims};
@@ -172,15 +234,23 @@ extern "C" void executeGraph(
   Tensor<float> param_3_bias = {param_3_bias_data, param_3_bias_shape, param_3_bias_dims};
 
   // --- Kernel Launch Sequence ---
-  dense_forward<<<dim3(4, 64), dim3(64, 1, 1), 0>>>(intermediate_0_tensor, input, param_0_weights, param_1_bias);
+  dense_forward_2d<<<dim3(1, 64), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, param_0_weights, param_1_bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(64, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, 16384);
+  relu_forward<<<dim3(64, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 64), dim3(256, 1, 1), 0>>>(output, intermediate_1_tensor, param_2_weights, param_3_bias);
+  dense_forward_2d<<<dim3(1, 64), dim3(256, 1, 1), 0>>>(output, intermediate_2_tensor, param_2_weights, param_3_bias);
   CUDA_CHECK(cudaGetLastError());
   
   // --- Synchronization for completion verification ---
   CUDA_CHECK(cudaDeviceSynchronize());
+  
+  // --- Report memory usage ---
+  size_t used_memory = allocator.get_used_size();
+  if (used_memory > 0) {
+    // Uncomment for debugging memory usage
+    // printf("Workspace memory used: %zu bytes (%.2f MB)\n", used_memory, used_memory / (1024.0 * 1024.0));
+  }
+  
   // --- End Execution Flow ---
 }
     
