@@ -476,7 +476,7 @@ export class CudaGraphCompiler {
 // Debug mode bounds checking (can be disabled for release builds)
 #ifndef NDEBUG
 #define TENSOR_BOUNDS_CHECK 1
-#define TENSOR_BOUNDS_CHECK_VERBOSE 0  // Set to 1 to enable printf debugging
+#define TENSOR_BOUNDS_CHECK_VERBOSE 1  // Enable verbose error messages in debug mode
 #else
 #define TENSOR_BOUNDS_CHECK 0
 #define TENSOR_BOUNDS_CHECK_VERBOSE 0
@@ -492,9 +492,11 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 1 || i < 0 || i >= shape[0]) {
       #if TENSOR_BOUNDS_CHECK_VERBOSE
-      printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\\n", i, shape[0], dims);
+      printf("FATAL: Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\\n", i, shape[0], dims);
       #endif
-      return data[0]; // Safe fallback to prevent crashes
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[i]; 
@@ -504,10 +506,12 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
       #if TENSOR_BOUNDS_CHECK_VERBOSE
-      printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\\n", 
+      printf("FATAL: Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, shape[0], shape[1], dims);
       #endif
-      return data[0]; // Safe fallback to prevent crashes
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[i * shape[1] + j]; 
@@ -517,10 +521,12 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
       #if TENSOR_BOUNDS_CHECK_VERBOSE
-      printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
+      printf("FATAL: Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, shape[0], shape[1], shape[2], dims);
       #endif
-      return data[0]; // Safe fallback to prevent crashes
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[(i * shape[1] + j) * shape[2] + k]; 
@@ -531,10 +537,12 @@ struct Tensor {
     if (dims < 4 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || 
         k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
       #if TENSOR_BOUNDS_CHECK_VERBOSE
-      printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
+      printf("FATAL: Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
       #endif
-      return data[0]; // Safe fallback to prevent crashes
+      #if defined(__CUDA_ARCH__)
+      asm("trap;");  // Trigger a GPU trap/exception
+      #endif
     }
     #endif
     return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
@@ -553,13 +561,16 @@ struct Tensor {
     
     const tensorInstantiations: string[] = [];
     
-    // Create tensor instantiations for intermediate tensors
+    // Create tensor instantiations for intermediate tensors using dynamic allocation
     intermediateIdx = 0;
     for (const [key, tensorInfo] of intermediateTensors.entries()) {
         const varName = `intermediate_${intermediateIdx}`;
         const shapeVar = `${varName}_shape`;
         const tensorVar = `${varName}_tensor`;
-        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {(float*)(workspace + ${tensorInfo.offset}), ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+        const sizeInBytes = tensorInfo.spec.shape.reduce((a, b) => a * b, 1) * 4; // float = 4 bytes
+        tensorInstantiations.push(`  float* ${varName}_data = (float*)allocator.allocate(${sizeInBytes});`);
+        tensorInstantiations.push(`  if (!${varName}_data) { fprintf(stderr, "Failed to allocate memory for ${varName}\\n"); return; }`);
+        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {${varName}_data, ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
         intermediateIdx++;
     }
 
@@ -584,6 +595,8 @@ struct Tensor {
     const kernelCode = `
 #include <cuda_runtime.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // CUDA Error Checking Macro
 #define CUDA_CHECK(call) do { \
@@ -596,6 +609,47 @@ struct Tensor {
 } while(0)
 
 ${tensorStruct}
+
+// ======================================================
+// Dynamic Memory Allocator
+// ======================================================
+class WorkspaceAllocator {
+private:
+    char* base_ptr;
+    size_t current_offset;
+    size_t total_size;
+    
+    // Helper to align to 256-byte boundaries for optimal GPU performance
+    inline size_t align_to_256_bytes(size_t size) const {
+        return (size + 255) & ~255;
+    }
+    
+public:
+    WorkspaceAllocator(char* workspace, size_t workspace_size) 
+        : base_ptr(workspace), current_offset(0), total_size(workspace_size) {}
+    
+    void* allocate(size_t size) {
+        size_t aligned_size = align_to_256_bytes(size);
+        
+        if (current_offset + aligned_size > total_size) {
+            fprintf(stderr, "ERROR: Workspace allocator out of memory. Requested: %zu bytes (aligned: %zu), Available: %zu bytes\\n", 
+                    size, aligned_size, total_size - current_offset);
+            return nullptr;
+        }
+        
+        void* ptr = base_ptr + current_offset;
+        current_offset += aligned_size;
+        return ptr;
+    }
+    
+    size_t get_used_size() const {
+        return current_offset;
+    }
+    
+    void reset() {
+        current_offset = 0;
+    }
+};
 
 // ======================================================
 // Kernel Definitions
@@ -614,15 +668,11 @@ extern "C" void executeGraph(
     return;
   }
   
-  if (workspace_size < ${workspaceSize}) {
-    fprintf(stderr, "Error: Insufficient workspace size. Got %zu, need at least ${workspaceSize} bytes\\n", workspace_size);
-    return;
-  }
-
-  // --- Memory Alignment Helper ---
-  auto align_to_256_bytes = [](size_t offset) -> size_t {
-    return (offset + 255) & ~255;
-  };
+  // Note: We no longer check for exact workspace size since we're using dynamic allocation
+  // The allocator will report if we run out of space
+  
+  // --- Initialize Dynamic Memory Allocator ---
+  WorkspaceAllocator allocator(workspace, workspace_size);
 
   // --- Variable Declarations ---
 ${variableDeclarations.join("\n")}
@@ -635,6 +685,14 @@ ${executionCalls.join("\n")}
   
   // --- Synchronization for completion verification ---
   CUDA_CHECK(cudaDeviceSynchronize());
+  
+  // --- Report memory usage ---
+  size_t used_memory = allocator.get_used_size();
+  if (used_memory > 0) {
+    // Uncomment for debugging memory usage
+    // printf("Workspace memory used: %zu bytes (%.2f MB)\\n", used_memory, used_memory / (1024.0 * 1024.0));
+  }
+  
   // --- End Execution Flow ---
 }
     `;

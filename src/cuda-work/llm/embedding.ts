@@ -75,26 +75,57 @@ export class EmbeddingLayer implements Layer {
 // ============================================================================
 
 export class PositionalEncodingLayer implements Layer {
-  constructor(private maxLen: number, private embedDim: number) {}
+  private frequencies!: CudaTensor;
+
+  constructor(
+    private runtime: CudaRuntime,
+    private maxLen: number, 
+    private embedDim: number
+  ) {}
+
+  async initialize(): Promise<void> {
+    // Pre-compute frequency values for better accuracy
+    // frequencies[i] = 1.0 / pow(10000.0, (2.0 * i) / embed_dim)
+    const numFreqs = Math.floor(this.embedDim / 2);
+    this.frequencies = await this.runtime.malloc(
+      numFreqs * 4, // float32 = 4 bytes
+      [numFreqs],
+      "float32"
+    );
+
+    // Calculate and upload frequency values
+    const freqData = new Float32Array(numFreqs);
+    for (let i = 0; i < numFreqs; i++) {
+      freqData[i] = 1.0 / Math.pow(10000.0, (2.0 * i) / this.embedDim);
+    }
+
+    // Copy pre-computed frequencies to GPU
+    const freqBuffer = Buffer.from(freqData.buffer);
+    await this.runtime.memcpyHostToDevice(this.frequencies, freqBuffer);
+  }
 
   addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
     const deviceCode = `
       /**
        * @cuda global
        */
-      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input, Tensor<float> frequencies) {
         int batch_idx = blockIdx.z;
         int seq_idx = blockIdx.y;
         int embed_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (batch_idx < input.shape[0] && seq_idx < input.shape[1] && embed_idx < input.shape[2]) {
           float pos = (float)seq_idx;
-          float i = (float)embed_idx / 2.0f;  // Use floating-point division for proper frequency calculation
+          int freq_idx = embed_idx / 2;  // Integer division to get frequency index
+          
+          // Use pre-computed frequency values for better accuracy
+          // This eliminates floating-point accumulation errors from powf() calculations
+          float freq = frequencies(freq_idx);
           float val;
           if (embed_idx % 2 == 0) {
-            val = sinf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
+            val = sinf(pos * freq);
           } else {
-            val = cosf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
+            val = cosf(pos * freq);
           }
           output(batch_idx, seq_idx, embed_idx) = input(batch_idx, seq_idx, embed_idx) + val;
         }
@@ -107,6 +138,7 @@ export class PositionalEncodingLayer implements Layer {
     )
       .addInput("input", [-1, -1, this.embedDim], "float32")
       .addOutput("output", [-1, -1, this.embedDim], "float32")
+      .addParameter("frequencies", this.frequencies)
       .setShapeResolver((inputs) => {
         const inputShape = inputs.get("input")!.shape;
         return new Map([["output", { shape: inputShape }]]);

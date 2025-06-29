@@ -136,30 +136,61 @@ export class SoftmaxLayer implements Layer {
           int size = input.shape[1];
           
           // 1. Find max for numerical stability
-          float max_val = -FLT_MAX;
+          // 1. Find max for numerical stability
+          float max_val_thread = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val = fmaxf(max_val, input(batch_idx, i));
+              max_val_thread = fmaxf(max_val_thread, input(batch_idx, i));
           }
-          shared_mem[tid] = max_val;
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
           __syncthreads();
-          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
-              __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
           }
-          max_val = shared_mem[0];
+          float max_val = shared_mem[0];
 
           // 2. Calculate sum of exps
-          float sum_exp = 0.0f;
+          float sum_exp_thread = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp += expf(input(batch_idx, i) - max_val);
+              sum_exp_thread += expf(input(batch_idx, i) - max_val);
           }
-          shared_mem[tid] = sum_exp;
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
           __syncthreads();
-          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
-              __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
           }
-          sum_exp = shared_mem[0];
+          float sum_exp = shared_mem[0];
 
           // 3. Calculate softmax
           for (int i = tid; i < size; i += blockDim.x) {
@@ -173,30 +204,61 @@ export class SoftmaxLayer implements Layer {
           int size = input.shape[3];
 
           // 1. Find max for numerical stability
-          float max_val = -FLT_MAX;
+          // 1. Find max for numerical stability
+          float max_val_thread = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val = fmaxf(max_val, input(batch_idx, head_idx, row_idx, i));
+              max_val_thread = fmaxf(max_val_thread, input(batch_idx, head_idx, row_idx, i));
           }
-          shared_mem[tid] = max_val;
+          
+          // Intra-warp reduction for max_val_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = max_val_thread;
+          }
           __syncthreads();
-          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
-              __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
+                  }
+                  __syncthreads();
+              }
           }
-          max_val = shared_mem[0];
+          float max_val = shared_mem[0];
 
           // 2. Calculate sum of exps
-          float sum_exp = 0.0f;
+          float sum_exp_thread = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
+              sum_exp_thread += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
           }
-          shared_mem[tid] = sum_exp;
+          
+          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
+          for (int offset = 16; offset > 0; offset /= 2) {
+              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
+          }
+          
+          // Store warp-leader results to shared memory
+          if (threadIdx.x % 32 == 0) {
+              shared_mem[threadIdx.x / 32] = sum_exp_thread;
+          }
           __syncthreads();
-          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
-              __syncthreads();
+
+          // Inter-warp reduction using shared memory
+          if (threadIdx.x < (blockDim.x + 31) / 32) {
+              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
+                  if (threadIdx.x < s) {
+                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
+                  }
+                  __syncthreads();
+              }
           }
-          sum_exp = shared_mem[0];
+          float sum_exp = shared_mem[0];
 
           // 3. Calculate softmax
           for (int i = tid; i < size; i += blockDim.x) {

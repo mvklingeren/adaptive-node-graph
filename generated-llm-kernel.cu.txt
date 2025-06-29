@@ -159,23 +159,19 @@ public:
       /**
        * @cuda global
        */
-      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input, Tensor<float> frequencies) {
+      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
         int batch_idx = blockIdx.z;
         int seq_idx = blockIdx.y;
         int embed_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (batch_idx < input.shape[0] && seq_idx < input.shape[1] && embed_idx < input.shape[2]) {
           float pos = (float)seq_idx;
-          int freq_idx = embed_idx / 2;  // Integer division to get frequency index
-          
-          // Use pre-computed frequency values for better accuracy
-          // This eliminates floating-point accumulation errors from powf() calculations
-          float freq = frequencies(freq_idx);
+          float i = (float)embed_idx / 2.0f;  // Use floating-point division for proper frequency calculation
           float val;
           if (embed_idx % 2 == 0) {
-            val = sinf(pos * freq);
+            val = sinf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
           } else {
-            val = cosf(pos * freq);
+            val = cosf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
           }
           output(batch_idx, seq_idx, embed_idx) = input(batch_idx, seq_idx, embed_idx) + val;
         }
@@ -235,75 +231,18 @@ public:
       /**
        * @cuda global
        */
-      __global__ void batched_matmul_transpose_b_tiled(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
-        const int TILE_SIZE = 32;
-        
-        // Add +1 to avoid bank conflicts
-        __shared__ float sA[TILE_SIZE][TILE_SIZE + 1];
-        __shared__ float sB[TILE_SIZE][TILE_SIZE + 1];
-        
+      __global__ void batched_matmul_transpose_b(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
-        
-        // Calculate block position in the output matrix
-        int tiles_per_row = (output.shape[3] + TILE_SIZE - 1) / TILE_SIZE;
-        int block_row = blockIdx.x / tiles_per_row;
-        int block_col = blockIdx.x % tiles_per_row;
-        
-        // Global row and column for the output element
-        int row = block_row * TILE_SIZE + threadIdx.y;
-        int col = block_col * TILE_SIZE + threadIdx.x;
-        
-        float sum = 0.0f;
-        
-        // Determine K dimension based on transpose
-        int k_dim = b.shape[2];
-        int num_tiles_k = (k_dim + TILE_SIZE - 1) / TILE_SIZE;
-        
-        for (int tile = 0; tile < num_tiles_k; ++tile) {
-            // Load tile of A into shared memory
-            int a_row = row;
-            int a_col = tile * TILE_SIZE + threadIdx.x;
-            
-            if (batch_idx < a.shape[0] && head_idx < a.shape[1] && 
-                a_row < a.shape[2] && a_col < a.shape[3]) {
-                sA[threadIdx.y][threadIdx.x] = a(batch_idx, head_idx, a_row, a_col);
-            } else {
-                sA[threadIdx.y][threadIdx.x] = 0.0f;
-            }
-            
-            // Load tile of B into shared memory
-            int b_row = tile * TILE_SIZE + threadIdx.y;
-            int b_col = col;
-            
-            if (batch_idx < b.shape[0] && head_idx < b.shape[1]) {
-                
-                // For transpose B: we want B[k, n] so swap indices
-                if (b_row < b.shape[3] && b_col < b.shape[2]) {
-                    sB[threadIdx.y][threadIdx.x] = b(batch_idx, head_idx, b_col, b_row);
-                } else {
-                    sB[threadIdx.y][threadIdx.x] = 0.0f;
-                }
-                
-            } else {
-                sB[threadIdx.y][threadIdx.x] = 0.0f;
-            }
-            
-            __syncthreads();
-            
-            // Compute partial dot product
-            #pragma unroll
-            for (int k = 0; k < TILE_SIZE; ++k) {
-                sum += sA[threadIdx.y][k] * sB[k][threadIdx.x];
-            }
-            
-            __syncthreads();
-        }
-        
-        // Write result to global memory
-        if (batch_idx < output.shape[0] && head_idx < output.shape[1] && 
-            row < output.shape[2] && col < output.shape[3]) {
-            output(batch_idx, head_idx, row, col) = sum;
+        int row = blockIdx.x;
+        int col = threadIdx.x;
+
+        if (batch_idx < a.shape[0] && head_idx < a.shape[1] && row < a.shape[2] && col < output.shape[3]) {
+          float sum = 0.0f;
+          for (int k = 0; k < a.shape[3]; ++k) {
+            sum += a(batch_idx, head_idx, row, k) * b(batch_idx, head_idx, col, k);
+          }
+          output(batch_idx, head_idx, row, col) = sum;
         }
       }
     
@@ -338,61 +277,30 @@ public:
           int size = input.shape[1];
           
           // 1. Find max for numerical stability
-          // 1. Find max for numerical stability
-          float max_val_thread = -FLT_MAX;
+          float max_val = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val_thread = fmaxf(max_val_thread, input(batch_idx, i));
+              max_val = fmaxf(max_val, input(batch_idx, i));
           }
-          
-          // Intra-warp reduction for max_val_thread using __shfl_down_sync
-          for (int offset = 16; offset > 0; offset /= 2) {
-              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
-          }
-          
-          // Store warp-leader results to shared memory
-          if (threadIdx.x % 32 == 0) {
-              shared_mem[threadIdx.x / 32] = max_val_thread;
-          }
+          shared_mem[tid] = max_val;
           __syncthreads();
-
-          // Inter-warp reduction using shared memory
-          if (threadIdx.x < (blockDim.x + 31) / 32) {
-              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
-                  if (threadIdx.x < s) {
-                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
-                  }
-                  __syncthreads();
-              }
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
+              __syncthreads();
           }
-          float max_val = shared_mem[0];
+          max_val = shared_mem[0];
 
           // 2. Calculate sum of exps
-          float sum_exp_thread = 0.0f;
+          float sum_exp = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp_thread += expf(input(batch_idx, i) - max_val);
+              sum_exp += expf(input(batch_idx, i) - max_val);
           }
-          
-          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
-          for (int offset = 16; offset > 0; offset /= 2) {
-              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
-          }
-          
-          // Store warp-leader results to shared memory
-          if (threadIdx.x % 32 == 0) {
-              shared_mem[threadIdx.x / 32] = sum_exp_thread;
-          }
+          shared_mem[tid] = sum_exp;
           __syncthreads();
-
-          // Inter-warp reduction using shared memory
-          if (threadIdx.x < (blockDim.x + 31) / 32) {
-              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
-                  if (threadIdx.x < s) {
-                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
-                  }
-                  __syncthreads();
-              }
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
+              __syncthreads();
           }
-          float sum_exp = shared_mem[0];
+          sum_exp = shared_mem[0];
 
           // 3. Calculate softmax
           for (int i = tid; i < size; i += blockDim.x) {
@@ -406,61 +314,30 @@ public:
           int size = input.shape[3];
 
           // 1. Find max for numerical stability
-          // 1. Find max for numerical stability
-          float max_val_thread = -FLT_MAX;
+          float max_val = -FLT_MAX;
           for (int i = tid; i < size; i += blockDim.x) {
-              max_val_thread = fmaxf(max_val_thread, input(batch_idx, head_idx, row_idx, i));
+              max_val = fmaxf(max_val, input(batch_idx, head_idx, row_idx, i));
           }
-          
-          // Intra-warp reduction for max_val_thread using __shfl_down_sync
-          for (int offset = 16; offset > 0; offset /= 2) {
-              max_val_thread = fmaxf(max_val_thread, __shfl_down_sync(0xFFFFFFFF, max_val_thread, offset));
-          }
-          
-          // Store warp-leader results to shared memory
-          if (threadIdx.x % 32 == 0) {
-              shared_mem[threadIdx.x / 32] = max_val_thread;
-          }
+          shared_mem[tid] = max_val;
           __syncthreads();
-
-          // Inter-warp reduction using shared memory
-          if (threadIdx.x < (blockDim.x + 31) / 32) {
-              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
-                  if (threadIdx.x < s) {
-                      shared_mem[threadIdx.x] = fmaxf(shared_mem[threadIdx.x], shared_mem[threadIdx.x + s]);
-                  }
-                  __syncthreads();
-              }
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] = fmaxf(shared_mem[tid], shared_mem[tid + s]); }
+              __syncthreads();
           }
-          float max_val = shared_mem[0];
+          max_val = shared_mem[0];
 
           // 2. Calculate sum of exps
-          float sum_exp_thread = 0.0f;
+          float sum_exp = 0.0f;
           for (int i = tid; i < size; i += blockDim.x) {
-              sum_exp_thread += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
+              sum_exp += expf(input(batch_idx, head_idx, row_idx, i) - max_val);
           }
-          
-          // Intra-warp reduction for sum_exp_thread using __shfl_down_sync
-          for (int offset = 16; offset > 0; offset /= 2) {
-              sum_exp_thread += __shfl_down_sync(0xFFFFFFFF, sum_exp_thread, offset);
-          }
-          
-          // Store warp-leader results to shared memory
-          if (threadIdx.x % 32 == 0) {
-              shared_mem[threadIdx.x / 32] = sum_exp_thread;
-          }
+          shared_mem[tid] = sum_exp;
           __syncthreads();
-
-          // Inter-warp reduction using shared memory
-          if (threadIdx.x < (blockDim.x + 31) / 32) {
-              for (int s = ((blockDim.x + 31) / 32) / 2; s > 0; s >>= 1) {
-                  if (threadIdx.x < s) {
-                      shared_mem[threadIdx.x] += shared_mem[threadIdx.x + s];
-                  }
-                  __syncthreads();
-              }
+          for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+              if (tid < s) { shared_mem[tid] += shared_mem[tid + s]; }
+              __syncthreads();
           }
-          float sum_exp = shared_mem[0];
+          sum_exp = shared_mem[0];
 
           // 3. Calculate softmax
           for (int i = tid; i < size; i += blockDim.x) {
@@ -474,75 +351,18 @@ public:
       /**
        * @cuda global
        */
-      __global__ void batched_matmul_tiled(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
-        const int TILE_SIZE = 32;
-        
-        // Add +1 to avoid bank conflicts
-        __shared__ float sA[TILE_SIZE][TILE_SIZE + 1];
-        __shared__ float sB[TILE_SIZE][TILE_SIZE + 1];
-        
+      __global__ void batched_matmul(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
-        
-        // Calculate block position in the output matrix
-        int tiles_per_row = (output.shape[3] + TILE_SIZE - 1) / TILE_SIZE;
-        int block_row = blockIdx.x / tiles_per_row;
-        int block_col = blockIdx.x % tiles_per_row;
-        
-        // Global row and column for the output element
-        int row = block_row * TILE_SIZE + threadIdx.y;
-        int col = block_col * TILE_SIZE + threadIdx.x;
-        
-        float sum = 0.0f;
-        
-        // Determine K dimension based on transpose
-        int k_dim = b.shape[3];
-        int num_tiles_k = (k_dim + TILE_SIZE - 1) / TILE_SIZE;
-        
-        for (int tile = 0; tile < num_tiles_k; ++tile) {
-            // Load tile of A into shared memory
-            int a_row = row;
-            int a_col = tile * TILE_SIZE + threadIdx.x;
-            
-            if (batch_idx < a.shape[0] && head_idx < a.shape[1] && 
-                a_row < a.shape[2] && a_col < a.shape[3]) {
-                sA[threadIdx.y][threadIdx.x] = a(batch_idx, head_idx, a_row, a_col);
-            } else {
-                sA[threadIdx.y][threadIdx.x] = 0.0f;
-            }
-            
-            // Load tile of B into shared memory
-            int b_row = tile * TILE_SIZE + threadIdx.y;
-            int b_col = col;
-            
-            if (batch_idx < b.shape[0] && head_idx < b.shape[1]) {
-                
-                // Normal B: B[k, n]
-                if (b_row < b.shape[2] && b_col < b.shape[3]) {
-                    sB[threadIdx.y][threadIdx.x] = b(batch_idx, head_idx, b_row, b_col);
-                } else {
-                    sB[threadIdx.y][threadIdx.x] = 0.0f;
-                }
-                
-            } else {
-                sB[threadIdx.y][threadIdx.x] = 0.0f;
-            }
-            
-            __syncthreads();
-            
-            // Compute partial dot product
-            #pragma unroll
-            for (int k = 0; k < TILE_SIZE; ++k) {
-                sum += sA[threadIdx.y][k] * sB[k][threadIdx.x];
-            }
-            
-            __syncthreads();
-        }
-        
-        // Write result to global memory
-        if (batch_idx < output.shape[0] && head_idx < output.shape[1] && 
-            row < output.shape[2] && col < output.shape[3]) {
-            output(batch_idx, head_idx, row, col) = sum;
+        int row = blockIdx.x;
+        int col = threadIdx.x;
+
+        if (batch_idx < a.shape[0] && head_idx < a.shape[1] && row < a.shape[2] && col < output.shape[3]) {
+          float sum = 0.0f;
+          for (int k = 0; k < a.shape[3]; ++k) {
+            sum += a(batch_idx, head_idx, row, k) * b(batch_idx, head_idx, k, col);
+          }
+          output(batch_idx, head_idx, row, col) = sum;
         }
       }
     
@@ -714,111 +534,108 @@ extern "C" void executeGraph(
   float* param_0_embeddings_data,
   const int* param_0_embeddings_shape,
   int param_0_embeddings_dims,
-  float* param_1_frequencies_data,
-  const int* param_1_frequencies_shape,
-  int param_1_frequencies_dims,
-  float* param_2_weights_data,
-  const int* param_2_weights_shape,
-  int param_2_weights_dims,
-  float* param_3_bias_data,
-  const int* param_3_bias_shape,
-  int param_3_bias_dims,
-  float* param_4_weights_data,
-  const int* param_4_weights_shape,
-  int param_4_weights_dims,
-  float* param_5_bias_data,
-  const int* param_5_bias_shape,
-  int param_5_bias_dims,
-  float* param_6_weights_data,
-  const int* param_6_weights_shape,
-  int param_6_weights_dims,
-  float* param_7_bias_data,
-  const int* param_7_bias_shape,
-  int param_7_bias_dims,
-  float* param_8_weights_data,
-  const int* param_8_weights_shape,
-  int param_8_weights_dims,
-  float* param_9_bias_data,
-  const int* param_9_bias_shape,
-  int param_9_bias_dims,
-  float* param_10_gamma_data,
-  const int* param_10_gamma_shape,
-  int param_10_gamma_dims,
-  float* param_11_beta_data,
-  const int* param_11_beta_shape,
-  int param_11_beta_dims,
-  float* param_12_weights_data,
-  const int* param_12_weights_shape,
-  int param_12_weights_dims,
-  float* param_13_bias_data,
-  const int* param_13_bias_shape,
-  int param_13_bias_dims,
-  float* param_14_weights_data,
-  const int* param_14_weights_shape,
-  int param_14_weights_dims,
-  float* param_15_bias_data,
-  const int* param_15_bias_shape,
-  int param_15_bias_dims,
-  float* param_16_gamma_data,
-  const int* param_16_gamma_shape,
-  int param_16_gamma_dims,
-  float* param_17_beta_data,
-  const int* param_17_beta_shape,
-  int param_17_beta_dims,
-  float* param_18_weights_data,
-  const int* param_18_weights_shape,
-  int param_18_weights_dims,
-  float* param_19_bias_data,
-  const int* param_19_bias_shape,
-  int param_19_bias_dims,
-  float* param_20_weights_data,
-  const int* param_20_weights_shape,
-  int param_20_weights_dims,
-  float* param_21_bias_data,
-  const int* param_21_bias_shape,
-  int param_21_bias_dims,
-  float* param_22_weights_data,
-  const int* param_22_weights_shape,
-  int param_22_weights_dims,
-  float* param_23_bias_data,
-  const int* param_23_bias_shape,
-  int param_23_bias_dims,
-  float* param_24_weights_data,
-  const int* param_24_weights_shape,
-  int param_24_weights_dims,
-  float* param_25_bias_data,
-  const int* param_25_bias_shape,
-  int param_25_bias_dims,
-  float* param_26_gamma_data,
-  const int* param_26_gamma_shape,
-  int param_26_gamma_dims,
-  float* param_27_beta_data,
-  const int* param_27_beta_shape,
-  int param_27_beta_dims,
-  float* param_28_weights_data,
-  const int* param_28_weights_shape,
-  int param_28_weights_dims,
-  float* param_29_bias_data,
-  const int* param_29_bias_shape,
-  int param_29_bias_dims,
-  float* param_30_weights_data,
-  const int* param_30_weights_shape,
-  int param_30_weights_dims,
-  float* param_31_bias_data,
-  const int* param_31_bias_shape,
-  int param_31_bias_dims,
-  float* param_32_gamma_data,
-  const int* param_32_gamma_shape,
-  int param_32_gamma_dims,
-  float* param_33_beta_data,
-  const int* param_33_beta_shape,
-  int param_33_beta_dims,
-  float* param_34_weights_data,
-  const int* param_34_weights_shape,
-  int param_34_weights_dims,
-  float* param_35_bias_data,
-  const int* param_35_bias_shape,
-  int param_35_bias_dims,
+  float* param_1_weights_data,
+  const int* param_1_weights_shape,
+  int param_1_weights_dims,
+  float* param_2_bias_data,
+  const int* param_2_bias_shape,
+  int param_2_bias_dims,
+  float* param_3_weights_data,
+  const int* param_3_weights_shape,
+  int param_3_weights_dims,
+  float* param_4_bias_data,
+  const int* param_4_bias_shape,
+  int param_4_bias_dims,
+  float* param_5_weights_data,
+  const int* param_5_weights_shape,
+  int param_5_weights_dims,
+  float* param_6_bias_data,
+  const int* param_6_bias_shape,
+  int param_6_bias_dims,
+  float* param_7_weights_data,
+  const int* param_7_weights_shape,
+  int param_7_weights_dims,
+  float* param_8_bias_data,
+  const int* param_8_bias_shape,
+  int param_8_bias_dims,
+  float* param_9_gamma_data,
+  const int* param_9_gamma_shape,
+  int param_9_gamma_dims,
+  float* param_10_beta_data,
+  const int* param_10_beta_shape,
+  int param_10_beta_dims,
+  float* param_11_weights_data,
+  const int* param_11_weights_shape,
+  int param_11_weights_dims,
+  float* param_12_bias_data,
+  const int* param_12_bias_shape,
+  int param_12_bias_dims,
+  float* param_13_weights_data,
+  const int* param_13_weights_shape,
+  int param_13_weights_dims,
+  float* param_14_bias_data,
+  const int* param_14_bias_shape,
+  int param_14_bias_dims,
+  float* param_15_gamma_data,
+  const int* param_15_gamma_shape,
+  int param_15_gamma_dims,
+  float* param_16_beta_data,
+  const int* param_16_beta_shape,
+  int param_16_beta_dims,
+  float* param_17_weights_data,
+  const int* param_17_weights_shape,
+  int param_17_weights_dims,
+  float* param_18_bias_data,
+  const int* param_18_bias_shape,
+  int param_18_bias_dims,
+  float* param_19_weights_data,
+  const int* param_19_weights_shape,
+  int param_19_weights_dims,
+  float* param_20_bias_data,
+  const int* param_20_bias_shape,
+  int param_20_bias_dims,
+  float* param_21_weights_data,
+  const int* param_21_weights_shape,
+  int param_21_weights_dims,
+  float* param_22_bias_data,
+  const int* param_22_bias_shape,
+  int param_22_bias_dims,
+  float* param_23_weights_data,
+  const int* param_23_weights_shape,
+  int param_23_weights_dims,
+  float* param_24_bias_data,
+  const int* param_24_bias_shape,
+  int param_24_bias_dims,
+  float* param_25_gamma_data,
+  const int* param_25_gamma_shape,
+  int param_25_gamma_dims,
+  float* param_26_beta_data,
+  const int* param_26_beta_shape,
+  int param_26_beta_dims,
+  float* param_27_weights_data,
+  const int* param_27_weights_shape,
+  int param_27_weights_dims,
+  float* param_28_bias_data,
+  const int* param_28_bias_shape,
+  int param_28_bias_dims,
+  float* param_29_weights_data,
+  const int* param_29_weights_shape,
+  int param_29_weights_dims,
+  float* param_30_bias_data,
+  const int* param_30_bias_shape,
+  int param_30_bias_dims,
+  float* param_31_gamma_data,
+  const int* param_31_gamma_shape,
+  int param_31_gamma_dims,
+  float* param_32_beta_data,
+  const int* param_32_beta_shape,
+  int param_32_beta_dims,
+  float* param_33_weights_data,
+  const int* param_33_weights_shape,
+  int param_33_weights_dims,
+  float* param_34_bias_data,
+  const int* param_34_bias_shape,
+  int param_34_bias_dims,
   char* workspace,
   size_t workspace_size
 ) {
@@ -1004,52 +821,51 @@ extern "C" void executeGraph(
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
   Tensor<float> param_0_embeddings = {param_0_embeddings_data, param_0_embeddings_shape, param_0_embeddings_dims};
-  Tensor<float> param_1_frequencies = {param_1_frequencies_data, param_1_frequencies_shape, param_1_frequencies_dims};
-  Tensor<float> param_2_weights = {param_2_weights_data, param_2_weights_shape, param_2_weights_dims};
-  Tensor<float> param_3_bias = {param_3_bias_data, param_3_bias_shape, param_3_bias_dims};
-  Tensor<float> param_4_weights = {param_4_weights_data, param_4_weights_shape, param_4_weights_dims};
-  Tensor<float> param_5_bias = {param_5_bias_data, param_5_bias_shape, param_5_bias_dims};
-  Tensor<float> param_6_weights = {param_6_weights_data, param_6_weights_shape, param_6_weights_dims};
-  Tensor<float> param_7_bias = {param_7_bias_data, param_7_bias_shape, param_7_bias_dims};
-  Tensor<float> param_8_weights = {param_8_weights_data, param_8_weights_shape, param_8_weights_dims};
-  Tensor<float> param_9_bias = {param_9_bias_data, param_9_bias_shape, param_9_bias_dims};
-  Tensor<float> param_10_gamma = {param_10_gamma_data, param_10_gamma_shape, param_10_gamma_dims};
-  Tensor<float> param_11_beta = {param_11_beta_data, param_11_beta_shape, param_11_beta_dims};
-  Tensor<float> param_12_weights = {param_12_weights_data, param_12_weights_shape, param_12_weights_dims};
-  Tensor<float> param_13_bias = {param_13_bias_data, param_13_bias_shape, param_13_bias_dims};
-  Tensor<float> param_14_weights = {param_14_weights_data, param_14_weights_shape, param_14_weights_dims};
-  Tensor<float> param_15_bias = {param_15_bias_data, param_15_bias_shape, param_15_bias_dims};
-  Tensor<float> param_16_gamma = {param_16_gamma_data, param_16_gamma_shape, param_16_gamma_dims};
-  Tensor<float> param_17_beta = {param_17_beta_data, param_17_beta_shape, param_17_beta_dims};
-  Tensor<float> param_18_weights = {param_18_weights_data, param_18_weights_shape, param_18_weights_dims};
-  Tensor<float> param_19_bias = {param_19_bias_data, param_19_bias_shape, param_19_bias_dims};
-  Tensor<float> param_20_weights = {param_20_weights_data, param_20_weights_shape, param_20_weights_dims};
-  Tensor<float> param_21_bias = {param_21_bias_data, param_21_bias_shape, param_21_bias_dims};
-  Tensor<float> param_22_weights = {param_22_weights_data, param_22_weights_shape, param_22_weights_dims};
-  Tensor<float> param_23_bias = {param_23_bias_data, param_23_bias_shape, param_23_bias_dims};
-  Tensor<float> param_24_weights = {param_24_weights_data, param_24_weights_shape, param_24_weights_dims};
-  Tensor<float> param_25_bias = {param_25_bias_data, param_25_bias_shape, param_25_bias_dims};
-  Tensor<float> param_26_gamma = {param_26_gamma_data, param_26_gamma_shape, param_26_gamma_dims};
-  Tensor<float> param_27_beta = {param_27_beta_data, param_27_beta_shape, param_27_beta_dims};
-  Tensor<float> param_28_weights = {param_28_weights_data, param_28_weights_shape, param_28_weights_dims};
-  Tensor<float> param_29_bias = {param_29_bias_data, param_29_bias_shape, param_29_bias_dims};
-  Tensor<float> param_30_weights = {param_30_weights_data, param_30_weights_shape, param_30_weights_dims};
-  Tensor<float> param_31_bias = {param_31_bias_data, param_31_bias_shape, param_31_bias_dims};
-  Tensor<float> param_32_gamma = {param_32_gamma_data, param_32_gamma_shape, param_32_gamma_dims};
-  Tensor<float> param_33_beta = {param_33_beta_data, param_33_beta_shape, param_33_beta_dims};
-  Tensor<float> param_34_weights = {param_34_weights_data, param_34_weights_shape, param_34_weights_dims};
-  Tensor<float> param_35_bias = {param_35_bias_data, param_35_bias_shape, param_35_bias_dims};
+  Tensor<float> param_1_weights = {param_1_weights_data, param_1_weights_shape, param_1_weights_dims};
+  Tensor<float> param_2_bias = {param_2_bias_data, param_2_bias_shape, param_2_bias_dims};
+  Tensor<float> param_3_weights = {param_3_weights_data, param_3_weights_shape, param_3_weights_dims};
+  Tensor<float> param_4_bias = {param_4_bias_data, param_4_bias_shape, param_4_bias_dims};
+  Tensor<float> param_5_weights = {param_5_weights_data, param_5_weights_shape, param_5_weights_dims};
+  Tensor<float> param_6_bias = {param_6_bias_data, param_6_bias_shape, param_6_bias_dims};
+  Tensor<float> param_7_weights = {param_7_weights_data, param_7_weights_shape, param_7_weights_dims};
+  Tensor<float> param_8_bias = {param_8_bias_data, param_8_bias_shape, param_8_bias_dims};
+  Tensor<float> param_9_gamma = {param_9_gamma_data, param_9_gamma_shape, param_9_gamma_dims};
+  Tensor<float> param_10_beta = {param_10_beta_data, param_10_beta_shape, param_10_beta_dims};
+  Tensor<float> param_11_weights = {param_11_weights_data, param_11_weights_shape, param_11_weights_dims};
+  Tensor<float> param_12_bias = {param_12_bias_data, param_12_bias_shape, param_12_bias_dims};
+  Tensor<float> param_13_weights = {param_13_weights_data, param_13_weights_shape, param_13_weights_dims};
+  Tensor<float> param_14_bias = {param_14_bias_data, param_14_bias_shape, param_14_bias_dims};
+  Tensor<float> param_15_gamma = {param_15_gamma_data, param_15_gamma_shape, param_15_gamma_dims};
+  Tensor<float> param_16_beta = {param_16_beta_data, param_16_beta_shape, param_16_beta_dims};
+  Tensor<float> param_17_weights = {param_17_weights_data, param_17_weights_shape, param_17_weights_dims};
+  Tensor<float> param_18_bias = {param_18_bias_data, param_18_bias_shape, param_18_bias_dims};
+  Tensor<float> param_19_weights = {param_19_weights_data, param_19_weights_shape, param_19_weights_dims};
+  Tensor<float> param_20_bias = {param_20_bias_data, param_20_bias_shape, param_20_bias_dims};
+  Tensor<float> param_21_weights = {param_21_weights_data, param_21_weights_shape, param_21_weights_dims};
+  Tensor<float> param_22_bias = {param_22_bias_data, param_22_bias_shape, param_22_bias_dims};
+  Tensor<float> param_23_weights = {param_23_weights_data, param_23_weights_shape, param_23_weights_dims};
+  Tensor<float> param_24_bias = {param_24_bias_data, param_24_bias_shape, param_24_bias_dims};
+  Tensor<float> param_25_gamma = {param_25_gamma_data, param_25_gamma_shape, param_25_gamma_dims};
+  Tensor<float> param_26_beta = {param_26_beta_data, param_26_beta_shape, param_26_beta_dims};
+  Tensor<float> param_27_weights = {param_27_weights_data, param_27_weights_shape, param_27_weights_dims};
+  Tensor<float> param_28_bias = {param_28_bias_data, param_28_bias_shape, param_28_bias_dims};
+  Tensor<float> param_29_weights = {param_29_weights_data, param_29_weights_shape, param_29_weights_dims};
+  Tensor<float> param_30_bias = {param_30_bias_data, param_30_bias_shape, param_30_bias_dims};
+  Tensor<float> param_31_gamma = {param_31_gamma_data, param_31_gamma_shape, param_31_gamma_dims};
+  Tensor<float> param_32_beta = {param_32_beta_data, param_32_beta_shape, param_32_beta_dims};
+  Tensor<float> param_33_weights = {param_33_weights_data, param_33_weights_shape, param_33_weights_dims};
+  Tensor<float> param_34_bias = {param_34_bias_data, param_34_bias_shape, param_34_bias_dims};
 
   // --- Kernel Launch Sequence ---
   embedding_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_0_tensor, input, param_0_embeddings);
   CUDA_CHECK(cudaGetLastError());
-  positional_encoding_forward<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, param_1_frequencies);
+  positional_encoding_forward<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, param_2_weights, param_3_bias);
+  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, param_1_weights, param_2_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, param_4_weights, param_5_bias);
+  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, param_3_weights, param_4_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, param_6_weights, param_7_bias);
+  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, param_5_weights, param_6_bias);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 256, 1), dim3(32, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1057,37 +873,37 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 256, 1), dim3(32, 1, 1), 0>>>(intermediate_7_tensor, intermediate_4_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
+  batched_matmul_transpose_b<<<dim3(256, 4, 1), dim3(256, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
   CUDA_CHECK(cudaGetLastError());
   scale_forward<<<dim3(1024, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
   CUDA_CHECK(cudaGetLastError());
   softmax_forward<<<dim3(256, 4, 1), dim3(256, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
+  batched_matmul<<<dim3(256, 4, 1), dim3(256, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
   CUDA_CHECK(cudaGetLastError());
   concat_heads_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, param_8_weights, param_9_bias);
+  dense_forward_3d<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, param_7_weights, param_8_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_15_tensor, intermediate_14_tensor, param_10_gamma, param_11_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_15_tensor, intermediate_14_tensor, param_9_gamma, param_10_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_12_weights, param_13_bias);
+  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_11_weights, param_12_bias);
   CUDA_CHECK(cudaGetLastError());
   relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, param_14_weights, param_15_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, param_13_weights, param_14_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_20_tensor, intermediate_19_tensor, param_16_gamma, param_17_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_20_tensor, intermediate_19_tensor, param_15_gamma, param_16_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, param_18_weights, param_19_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, param_17_weights, param_18_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, param_20_weights, param_21_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, param_19_weights, param_20_bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, param_22_weights, param_23_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, param_21_weights, param_22_bias);
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1095,33 +911,33 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(1, 1), dim3(128, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
+  batched_matmul_transpose_b<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
   CUDA_CHECK(cudaGetLastError());
   scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
   CUDA_CHECK(cudaGetLastError());
   softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 512>>>(intermediate_29_tensor, intermediate_28_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(1, 1), dim3(32, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
+  batched_matmul<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
   CUDA_CHECK(cudaGetLastError());
   concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(1, 128, 1), dim3(256, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, param_24_weights, param_25_bias);
+  dense_forward_3d<<<dim3(1, 128, 1), dim3(256, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, param_23_weights, param_24_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_34_tensor, intermediate_33_tensor, param_26_gamma, param_27_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_34_tensor, intermediate_33_tensor, param_25_gamma, param_26_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_28_weights, param_29_bias);
+  dense_forward_2d<<<dim3(2, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_27_weights, param_28_bias);
   CUDA_CHECK(cudaGetLastError());
   relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, param_30_weights, param_31_bias);
+  dense_forward_2d<<<dim3(1, 1), dim3(256, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, param_29_weights, param_30_bias);
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_39_tensor, intermediate_38_tensor, param_32_gamma, param_33_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_39_tensor, intermediate_38_tensor, param_31_gamma, param_32_beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, param_34_weights, param_35_bias);
+  dense_forward_2d<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, param_33_weights, param_34_bias);
   CUDA_CHECK(cudaGetLastError());
   softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 4096>>>(output, intermediate_40_tensor);
   CUDA_CHECK(cudaGetLastError());

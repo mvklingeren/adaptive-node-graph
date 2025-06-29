@@ -49,7 +49,7 @@ export class LanguageModel extends NeuralGraph {
         this.maxLen
       )
     );
-    this.layers.push(new PositionalEncodingLayer(this.maxLen, this.embedDim));
+    this.layers.push(new PositionalEncodingLayer(this.runtime, this.maxLen, this.embedDim));
     for (let i = 0; i < this.numLayers; ++i) {
       this.layers.push(
         new TransformerBlock(

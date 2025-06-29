@@ -74,31 +74,96 @@ export class BatchedMatMul implements Layer {
   private functionName: string;
 
   constructor(private transposeB: boolean = false) {
-    this.functionName = this.transposeB ? "batched_matmul_transpose_b" : "batched_matmul";
+    this.functionName = this.transposeB ? "batched_matmul_transpose_b_tiled" : "batched_matmul_tiled";
   }
 
   addToGraph(graph: NeuralGraph, ...inputs: CudaNode[]): CudaNode {
-    // Corrected indexing for transpose
-    const b_access = this.transposeB 
-      ? "b(batch_idx, head_idx, col, k)" 
-      : "b(batch_idx, head_idx, k, col)";
-
     const deviceCode = `
       /**
        * @cuda global
        */
-      __global__ void ${this.functionName}(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void ${
+        this.functionName
+      }(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+        const int TILE_SIZE = 32;
+        
+        // Add +1 to avoid bank conflicts
+        __shared__ float sA[TILE_SIZE][TILE_SIZE + 1];
+        __shared__ float sB[TILE_SIZE][TILE_SIZE + 1];
+        
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
-        int row = blockIdx.x;
-        int col = threadIdx.x;
-
-        if (batch_idx < a.shape[0] && head_idx < a.shape[1] && row < a.shape[2] && col < output.shape[3]) {
-          float sum = 0.0f;
-          for (int k = 0; k < a.shape[3]; ++k) {
-            sum += a(batch_idx, head_idx, row, k) * ${b_access};
-          }
-          output(batch_idx, head_idx, row, col) = sum;
+        
+        // Calculate block position in the output matrix
+        int tiles_per_row = (output.shape[3] + TILE_SIZE - 1) / TILE_SIZE;
+        int block_row = blockIdx.x / tiles_per_row;
+        int block_col = blockIdx.x % tiles_per_row;
+        
+        // Global row and column for the output element
+        int row = block_row * TILE_SIZE + threadIdx.y;
+        int col = block_col * TILE_SIZE + threadIdx.x;
+        
+        float sum = 0.0f;
+        
+        // Determine K dimension based on transpose
+        int k_dim = ${this.transposeB ? "b.shape[2]" : "b.shape[3]"};
+        int num_tiles_k = (k_dim + TILE_SIZE - 1) / TILE_SIZE;
+        
+        for (int tile = 0; tile < num_tiles_k; ++tile) {
+            // Load tile of A into shared memory
+            int a_row = row;
+            int a_col = tile * TILE_SIZE + threadIdx.x;
+            
+            if (batch_idx < a.shape[0] && head_idx < a.shape[1] && 
+                a_row < a.shape[2] && a_col < a.shape[3]) {
+                sA[threadIdx.y][threadIdx.x] = a(batch_idx, head_idx, a_row, a_col);
+            } else {
+                sA[threadIdx.y][threadIdx.x] = 0.0f;
+            }
+            
+            // Load tile of B into shared memory
+            int b_row = tile * TILE_SIZE + threadIdx.y;
+            int b_col = col;
+            
+            if (batch_idx < b.shape[0] && head_idx < b.shape[1]) {
+                ${
+                  this.transposeB
+                    ? `
+                // For transpose B: we want B[k, n] so swap indices
+                if (b_row < b.shape[3] && b_col < b.shape[2]) {
+                    sB[threadIdx.y][threadIdx.x] = b(batch_idx, head_idx, b_col, b_row);
+                } else {
+                    sB[threadIdx.y][threadIdx.x] = 0.0f;
+                }
+                `
+                    : `
+                // Normal B: B[k, n]
+                if (b_row < b.shape[2] && b_col < b.shape[3]) {
+                    sB[threadIdx.y][threadIdx.x] = b(batch_idx, head_idx, b_row, b_col);
+                } else {
+                    sB[threadIdx.y][threadIdx.x] = 0.0f;
+                }
+                `
+                }
+            } else {
+                sB[threadIdx.y][threadIdx.x] = 0.0f;
+            }
+            
+            __syncthreads();
+            
+            // Compute partial dot product
+            #pragma unroll
+            for (int k = 0; k < TILE_SIZE; ++k) {
+                sum += sA[threadIdx.y][k] * sB[k][threadIdx.x];
+            }
+            
+            __syncthreads();
+        }
+        
+        // Write result to global memory
+        if (batch_idx < output.shape[0] && head_idx < output.shape[1] && 
+            row < output.shape[2] && col < output.shape[3]) {
+            output(batch_idx, head_idx, row, col) = sum;
         }
       }
     `;
