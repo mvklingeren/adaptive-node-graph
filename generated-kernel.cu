@@ -234,11 +234,11 @@ extern "C" void executeGraph(
   Tensor<float> param_3_bias = {param_3_bias_data, param_3_bias_shape, param_3_bias_dims};
 
   // --- Kernel Launch Sequence ---
-  dense_forward_2d<<<dim3(1, 64), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, param_0_weights, param_1_bias);
+  dense_forward_2d<<<dim3(1, 64), dim3(512, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, param_0_weights, param_1_bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(64, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor);
+  relu_forward<<<dim3(32, 1, 1), dim3(512, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 64), dim3(256, 1, 1), 0>>>(output, intermediate_2_tensor, param_2_weights, param_3_bias);
+  dense_forward_2d<<<dim3(1, 64), dim3(512, 1, 1), 0>>>(output, intermediate_2_tensor, param_2_weights, param_3_bias);
   CUDA_CHECK(cudaGetLastError());
   
   // --- Synchronization for completion verification ---

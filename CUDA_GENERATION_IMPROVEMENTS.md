@@ -33,7 +33,7 @@ for (int s = blockDim.x / 2; s > 0; s >>= 1) {
 
 ### Kernel Fusion
 
-[0x1A2B3F] - "Implement kernel fusion for scale + softmax operations. Combine these sequential operations into a single kernel to reduce memory traffic and kernel launch overhead."
+[COMPLETED 0x1A2B3F] - "Implement kernel fusion for scale + softmax operations. Combine these sequential operations into a single kernel to reduce memory traffic and kernel launch overhead."
 
 ### Resource Utilization
 

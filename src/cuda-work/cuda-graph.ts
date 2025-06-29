@@ -247,7 +247,10 @@ export class CudaGraph {
 // ============================================================================
 
 export class CudaGraphCompiler {
-  constructor(private runtime: CudaRuntime) {}
+  constructor(
+    private runtime: CudaRuntime,
+    private defaultBlockSize: number = 256
+  ) {}
 
   async compile(graph: CudaGraph, inputShapes: Map<string, number[]>): Promise<{kernel: CudaKernel, parameters: CudaTensor[], kernelCode: string, workspaceSize: number}> {
     // Create unique parameter names for each tensor to avoid conflicts
@@ -857,7 +860,7 @@ ${executionCalls.join("\n")}
           const batchSize = shape[0];
           const seqLen = shape[1];
           const embedDim = shape[2];
-          const blockSize = 256;
+          const blockSize = this.defaultBlockSize;
           const gridX = Math.ceil(embedDim / blockSize);
           return {
             gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
@@ -872,7 +875,7 @@ ${executionCalls.join("\n")}
         if (shape.length === 2) {
           const batchSize = shape[0];
           const outputFeatures = shape[1];
-          const blockSize = 256;
+          const blockSize = this.defaultBlockSize;
           const gridX = Math.ceil(outputFeatures / blockSize);
           return {
             gridDim: `dim3(${Math.max(gridX, 1)}, ${batchSize})`,
@@ -888,7 +891,7 @@ ${executionCalls.join("\n")}
             const batchSize = shape[0];
             const seqLen = shape[1];
             const outputFeatures = shape[2];
-            const blockSize = 256;
+            const blockSize = this.defaultBlockSize;
             const gridX = Math.ceil(outputFeatures / blockSize);
             return {
                 gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
@@ -983,7 +986,7 @@ ${executionCalls.join("\n")}
       case 'relu_forward':
         // Element-wise operations: calculate total elements and use 1D grid
         const totalElements = shape.reduce((a, b) => a * b, 1);
-        const blockSize = 256;
+        const blockSize = this.defaultBlockSize;
         const gridSize = Math.ceil(totalElements / blockSize);
         return {
           gridDim: `dim3(${gridSize}, 1, 1)`,
@@ -1012,7 +1015,7 @@ ${executionCalls.join("\n")}
         if (shape.length >= 2) {
           const batchSize = shape[0];
           const features = shape[shape.length - 1];
-          const blockSize = Math.min(features, 256);
+          const blockSize = Math.min(features, this.defaultBlockSize);
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
           const gridSize = Math.ceil(features / alignedBlockSize);
           return {
@@ -1025,7 +1028,7 @@ ${executionCalls.join("\n")}
 
     // Fallback: improved default based on tensor size
     const totalElements = shape.reduce((a, b) => a * b, 1);
-    const blockSize = 256;
+    const blockSize = this.defaultBlockSize;
     const gridSize = Math.ceil(totalElements / blockSize);
     return {
       gridDim: `dim3(${Math.min(gridSize, 65535)}, 1, 1)`,

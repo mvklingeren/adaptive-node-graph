@@ -16,7 +16,24 @@ async function main() {
   console.log("Initializing CUDA Runtime and Compiler...");
   // Use the MockCudaRuntime for development without a native addon.
   const runtime = new MockCudaRuntime();
-  const compiler = new CudaGraphCompiler(runtime);
+  
+  // Parse command line arguments for block size
+  const args = process.argv.slice(2);
+  let blockSize = 256; // default
+  
+  for (const arg of args) {
+    if (arg.startsWith('--bs=') || arg.startsWith('--block-size=')) {
+      const value = parseInt(arg.split('=')[1]);
+      if (value && value > 0 && value <= 1024 && value % 32 === 0) {
+        blockSize = value;
+        console.log(`Using custom block size: ${blockSize}`);
+      } else {
+        console.warn(`Invalid block size: ${value}. Must be > 0, <= 1024, and multiple of 32. Using default: 256`);
+      }
+    }
+  }
+  
+  const compiler = new CudaGraphCompiler(runtime, blockSize);
 
   console.log("\nBuilding a simple Neural Graph...");
   // 1. Create a new NeuralGraph.

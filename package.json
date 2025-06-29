@@ -26,13 +26,14 @@
     "clean": "rm -rf dist",
     "test": "npm run test-basics && npm run test-improvements && npm run test-complex && npm run test-neural-graph && npm run test-custom-node",
     "test-neural-graph": "npm run clean && esbuild src/cuda-work/test-neural-graph.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-neural-graph.js --external:pino && node dist/test-neural-graph.js",
+    "test-neural-graph:with-args": "npm run clean && esbuild src/cuda-work/test-neural-graph.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-neural-graph.js --external:pino && node dist/test-neural-graph.js",
     "test-language-model": "esbuild src/cuda-work/llm/test-language-model.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-language-model.js --external:pino && node dist/test-language-model.js",
     "test-softmax-layer": "esbuild src/cuda-work/llm/test-softmax-layer.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-softmax-layer.js --external:pino && node dist/test-softmax-layer.js",
     "test-fused-scale-softmax": "esbuild src/cuda-work/llm/test-fused-scale-softmax.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-fused-scale-softmax.js --external:pino && node dist/test-fused-scale-softmax.js",
     "test-tensor-core": "esbuild src/cuda-work/test-tensor-core-simple.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-tensor-core-simple.js --external:pino --external:typescript && node dist/test-tensor-core-simple.js",
     "test-tensor-core-minimal": "esbuild src/cuda-work/test-tensor-core-minimal.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-tensor-core-minimal.js --external:pino --external:typescript && node dist/test-tensor-core-minimal.js",
     "test-ts-to-cuda": "esbuild src/cuda-work/test-ts-to-cuda.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-ts-to-cuda.js --external:pino --external:typescript && node dist/test-ts-to-cuda.js",
-    "compile:cuda": "npm run test-neural-graph &&./compile-and-extract.sh"
+    "compile:cuda": "./compile-cuda.sh"
   },
   "author": "mvklingeren",
   "license": "MIT",
