@@ -33,6 +33,7 @@
     "test-tensor-core": "esbuild src/cuda-work/test-tensor-core-simple.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-tensor-core-simple.js --external:pino --external:typescript && node dist/test-tensor-core-simple.js",
     "test-tensor-core-minimal": "esbuild src/cuda-work/test-tensor-core-minimal.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-tensor-core-minimal.js --external:pino --external:typescript && node dist/test-tensor-core-minimal.js",
     "test-ts-to-cuda": "esbuild src/cuda-work/test-ts-to-cuda.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-ts-to-cuda.js --external:pino --external:typescript && node dist/test-ts-to-cuda.js",
+    "train:shakespear-llm": "esbuild src/cuda-work/shakespear-llm.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/shakespear-llm.js --external:pino && node dist/shakespear-llm.js",
     "compile:cuda": "./compile-cuda.sh"
   },
   "author": "mvklingeren",
