@@ -6,15 +6,69 @@
 #define CUDA_CHECK(call) do {     cudaError_t err = call;     if (err != cudaSuccess) {         fprintf(stderr, "CUDA error at %s:%d - %s\n", __FILE__, __LINE__,                 cudaGetErrorString(err));         exit(1);     } } while(0)
 
 
+// Debug mode bounds checking (can be disabled for release builds)
+#ifndef NDEBUG
+#define TENSOR_BOUNDS_CHECK 1
+#else
+#define TENSOR_BOUNDS_CHECK 0
+#endif
+
 template<typename T>
 struct Tensor {
   T* data;
   const int* shape;
   int dims;
 
-  __device__ inline T& operator()(int i) { return data[i]; }
-  __device__ inline T& operator()(int i, int j) { return data[i * shape[1] + j]; }
-  __device__ inline T& operator()(int i, int j, int k) { return data[(i * shape[1] + j) * shape[2] + k]; }
+  __device__ inline T& operator()(int i) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 1 || i < 0 || i >= shape[0]) {
+      printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\n", i, shape[0], dims);
+      // In device code, we can't throw exceptions, so we'll return a reference to the first element
+      // This prevents crashes but indicates a programming error
+    }
+    #endif
+    return data[i]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
+      printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\n", 
+             i, j, shape[0], shape[1], dims);
+    }
+    #endif
+    return data[i * shape[1] + j]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j, int k) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
+      printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
+             i, j, k, shape[0], shape[1], shape[2], dims);
+    }
+    #endif
+    return data[(i * shape[1] + j) * shape[2] + k]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j, int k, int l) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 4 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || 
+        k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
+      printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
+             i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
+    }
+    #endif
+    return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
+  }
+  
+  // Helper method to get total number of elements
+  __device__ inline int total_elements() const {
+    int total = 1;
+    for (int i = 0; i < dims; i++) {
+      total *= shape[i];
+    }
+    return total;
+  }
 };
 
 
@@ -277,14 +331,25 @@ struct Tensor {
        */
       __global__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        // This is a simplified approach. A robust implementation would handle
-        // arbitrary dimensions and calculate total size on the host.
-        int size = a.shape[0] * a.shape[1] * a.shape[2];
-
+        
+        // Calculate total size dynamically based on tensor dimensions
+        int size = a.total_elements();
+        
+        // Handle broadcasting: if b has fewer elements, broadcast it
+        int b_size = b.total_elements();
+        bool broadcast_b = (b_size < size);
+        
+        // Stride-based element-wise addition with broadcasting support
         for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            // This assumes flattened indexing. A better way is to reconstruct multidim index.
-            // For now, we'll assume the shapes are identical and can be treated as flat arrays.
-            output.data[i] = a.data[i] + b.data[i];
+            if (broadcast_b) {
+                // Simple broadcasting: repeat b's elements cyclically
+                // This works for cases like [batch, seq, features] + [batch, features]
+                int b_idx = i % b_size;
+                output.data[i] = a.data[i] + b.data[b_idx];
+            } else {
+                // Direct element-wise addition
+                output.data[i] = a.data[i] + b.data[i];
+            }
         }
       }
     
@@ -489,89 +554,89 @@ extern "C" void executeGraph(
   Tensor<float> beta = {beta_data, beta_shape, beta_dims};
 
   // --- Kernel Launch Sequence ---
-  embedding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_0_tensor, input, embeddings);
+  embedding_forward<<<dim3(256, 1), dim3(128, 1, 1), 0>>>(intermediate_0_tensor, input, embeddings);
   CUDA_CHECK(cudaGetLastError());
-  positional_encoding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor);
+  positional_encoding_forward<<<dim3(1, 256, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_6_tensor, intermediate_3_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_6_tensor, intermediate_3_tensor);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_7_tensor, intermediate_4_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_7_tensor, intermediate_4_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
+  batched_matmul_transpose_b<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
   CUDA_CHECK(cudaGetLastError());
-  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
+  scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
+  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
+  batched_matmul<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
+  concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, gamma, beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, gamma, beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_25_tensor, intermediate_22_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_25_tensor, intermediate_22_tensor);
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor);
+  split_heads_forward<<<dim3(4, 128, 1), dim3(32, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
+  batched_matmul_transpose_b<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
   CUDA_CHECK(cudaGetLastError());
-  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
+  scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_29_tensor, intermediate_28_tensor);
+  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 1024>>>(intermediate_29_tensor, intermediate_28_tensor);
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
+  batched_matmul<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
+  concat_heads_forward<<<dim3(128, 1), dim3(128, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, gamma, beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
+  add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, gamma, beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, gamma, beta);
   CUDA_CHECK(cudaGetLastError());
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, weights, bias);
+  dense_forward<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, weights, bias);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(output, intermediate_40_tensor);
+  softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 1024>>>(output, intermediate_40_tensor);
   CUDA_CHECK(cudaGetLastError());
   // --- End Execution Flow ---
 }

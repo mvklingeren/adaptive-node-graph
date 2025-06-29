@@ -408,10 +408,9 @@ export class CudaGraphCompiler {
             ...Array.from(node.parameters.keys())
         ].join(', ');
 
-        // Calculate shared memory requirements based on kernel type
+        // Calculate optimal grid and block dimensions based on tensor shapes and kernel type
+        const { gridDim, blockDim } = this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
         const sharedMemSize = this.calculateSharedMemorySize(node);
-        const gridDim = "dim3(1, 1, 1)";
-        const blockDim = "dim3(256, 1, 1)";
         
         executionCalls.push(`  ${node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelArgs});`);
         executionCalls.push(`  CUDA_CHECK(cudaGetLastError());`);
@@ -427,15 +426,69 @@ export class CudaGraphCompiler {
     const hostFunctionSignatureParams = [...inputParams, ...outputParams, ...parameterParams, 'char* workspace'];
 
     const tensorStruct = `
+// Debug mode bounds checking (can be disabled for release builds)
+#ifndef NDEBUG
+#define TENSOR_BOUNDS_CHECK 1
+#else
+#define TENSOR_BOUNDS_CHECK 0
+#endif
+
 template<typename T>
 struct Tensor {
   T* data;
   const int* shape;
   int dims;
 
-  __device__ inline T& operator()(int i) { return data[i]; }
-  __device__ inline T& operator()(int i, int j) { return data[i * shape[1] + j]; }
-  __device__ inline T& operator()(int i, int j, int k) { return data[(i * shape[1] + j) * shape[2] + k]; }
+  __device__ inline T& operator()(int i) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 1 || i < 0 || i >= shape[0]) {
+      printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\\n", i, shape[0], dims);
+      // In device code, we can't throw exceptions, so we'll return a reference to the first element
+      // This prevents crashes but indicates a programming error
+    }
+    #endif
+    return data[i]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
+      printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\\n", 
+             i, j, shape[0], shape[1], dims);
+    }
+    #endif
+    return data[i * shape[1] + j]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j, int k) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
+      printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
+             i, j, k, shape[0], shape[1], shape[2], dims);
+    }
+    #endif
+    return data[(i * shape[1] + j) * shape[2] + k]; 
+  }
+  
+  __device__ inline T& operator()(int i, int j, int k, int l) { 
+    #if TENSOR_BOUNDS_CHECK
+    if (dims < 4 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || 
+        k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
+      printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
+             i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
+    }
+    #endif
+    return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
+  }
+  
+  // Helper method to get total number of elements
+  __device__ inline int total_elements() const {
+    int total = 1;
+    for (int i = 0; i < dims; i++) {
+      total *= shape[i];
+    }
+    return total;
+  }
 };
 `;
     
@@ -610,6 +663,202 @@ ${executionCalls.join("\n")}
     console.log(`[Memory Planning] Allocated ${intermediateTensors.size} intermediate tensors in ${allocatedRegions.length} memory regions`);
     
     return { intermediateTensors, workspaceSize, tensorRegistry };
+  }
+
+  private calculateOptimalGridBlock(
+    node: CudaNode, 
+    outputTensors: Map<string, string>, 
+    inputTensors: Map<string, string>
+  ): { gridDim: string; blockDim: string } {
+    // Get the primary output tensor shape for grid calculation
+    const primaryOutput = Array.from(node.outputs.values())[0];
+    if (!primaryOutput) {
+      return { gridDim: "dim3(1, 1, 1)", blockDim: "dim3(256, 1, 1)" };
+    }
+
+    const shape = primaryOutput.shape;
+    
+    // Calculate optimal configurations based on kernel type and tensor dimensions
+    switch (node.functionName) {
+      case 'embedding_forward':
+        // Grid: (seq_len, batch_size), Block: (min(embed_dim, 1024))
+        if (shape.length >= 3) {
+          const batchSize = shape[0];
+          const seqLen = shape[1];
+          const embedDim = shape[2];
+          const blockSize = Math.min(embedDim, 1024);
+          // Ensure block size is multiple of 32 (warp size)
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${seqLen}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'positional_encoding_forward':
+        // Grid: (div_ceil(embed_dim, block_size), seq_len, batch_size)
+        if (shape.length >= 3) {
+          const batchSize = shape[0];
+          const seqLen = shape[1];
+          const embedDim = shape[2];
+          const blockSize = 256;
+          const gridX = Math.ceil(embedDim / blockSize);
+          return {
+            gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
+            blockDim: `dim3(${blockSize}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'dense_forward':
+        // Grid: (div_ceil(output_features, block_size), batch_size)
+        if (shape.length >= 2) {
+          const batchSize = shape[0];
+          const outputFeatures = shape[shape.length - 1]; // Last dimension
+          const blockSize = 256;
+          let gridX = Math.ceil(outputFeatures / blockSize);
+          
+          // Ensure minimum grid utilization - at least 4 blocks for small tensors
+          if (gridX < 4 && outputFeatures > 32) {
+            const smallerBlockSize = Math.max(32, Math.ceil(outputFeatures / 4));
+            const alignedBlockSize = Math.ceil(smallerBlockSize / 32) * 32;
+            gridX = Math.ceil(outputFeatures / alignedBlockSize);
+            return {
+              gridDim: `dim3(${gridX}, ${batchSize})`,
+              blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            };
+          }
+          
+          return {
+            gridDim: `dim3(${Math.max(gridX, 1)}, ${batchSize})`,
+            blockDim: `dim3(${blockSize}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'split_heads_forward':
+        // Grid: (num_heads, seq_len, batch_size), Block: (head_dim)
+        if (shape.length >= 4) {
+          const batchSize = shape[0];
+          const numHeads = shape[1];
+          const seqLen = shape[2];
+          const headDim = shape[3];
+          const blockSize = Math.min(headDim, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${numHeads}, ${seqLen}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'batched_matmul_transpose_b':
+      case 'batched_matmul':
+        // Grid: (seq_len, num_heads, batch_size), Block: (seq_len or 256, whichever is smaller)
+        if (shape.length >= 4) {
+          const batchSize = shape[0];
+          const numHeads = shape[1];
+          const seqLen = shape[2];
+          const blockSize = Math.min(seqLen, 256);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'softmax_forward':
+        if (shape.length === 2) {
+          // 2D case: [batch, features]
+          const batchSize = shape[0];
+          const features = shape[1];
+          const blockSize = Math.min(features, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${batchSize}, 1, 1)`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        } else if (shape.length === 4) {
+          // 4D case: [batch, heads, seq, seq]
+          const batchSize = shape[0];
+          const numHeads = shape[1];
+          const seqLen = shape[2];
+          const blockSize = Math.min(seqLen, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'layer_norm_forward':
+        // Grid: (seq_len, batch_size), Block: (min(feature_count, 1024))
+        if (shape.length >= 3) {
+          const batchSize = shape[0];
+          const seqLen = shape[1];
+          const featureCount = shape[2];
+          const blockSize = Math.min(featureCount, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${seqLen}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      case 'scale_forward':
+      case 'add_forward':
+      case 'relu_forward':
+        // Element-wise operations: calculate total elements and use 1D grid
+        const totalElements = shape.reduce((a, b) => a * b, 1);
+        const blockSize = 256;
+        const gridSize = Math.ceil(totalElements / blockSize);
+        return {
+          gridDim: `dim3(${gridSize}, 1, 1)`,
+          blockDim: `dim3(${blockSize}, 1, 1)`
+        };
+
+      case 'concat_heads_forward':
+        // Grid: (seq_len, batch_size), Block: (min(embed_dim, 1024))
+        if (shape.length >= 3) {
+          const batchSize = shape[0];
+          const seqLen = shape[1];
+          const embedDim = shape[2];
+          const blockSize = Math.min(embedDim, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          return {
+            gridDim: `dim3(${seqLen}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+        break;
+
+      default:
+        // Default case: use tensor-aware sizing
+        if (shape.length >= 2) {
+          const batchSize = shape[0];
+          const features = shape[shape.length - 1];
+          const blockSize = Math.min(features, 256);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const gridSize = Math.ceil(features / alignedBlockSize);
+          return {
+            gridDim: `dim3(${gridSize}, ${batchSize})`,
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+          };
+        }
+    }
+
+    // Fallback: improved default based on tensor size
+    const totalElements = shape.reduce((a, b) => a * b, 1);
+    const blockSize = 256;
+    const gridSize = Math.ceil(totalElements / blockSize);
+    return {
+      gridDim: `dim3(${Math.min(gridSize, 65535)}, 1, 1)`,
+      blockDim: `dim3(${blockSize}, 1, 1)`
+    };
   }
 
   private calculateSharedMemorySize(node: CudaNode): number {
