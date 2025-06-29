@@ -312,7 +312,7 @@ export class AddLayer implements Layer {
       /**
        * @cuda global
        */
-      __device__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         // This is a simplified approach. A robust implementation would handle
         // arbitrary dimensions and calculate total size on the host.

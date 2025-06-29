@@ -45,7 +45,10 @@ struct Tensor {
     
 
 
-      __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+      /**
+       * @cuda global
+       */
+      __global__ void relu_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = 1;
         for (int i = 0; i < input.dims; ++i) {
