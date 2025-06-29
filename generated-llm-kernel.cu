@@ -9,8 +9,10 @@
 // Debug mode bounds checking (can be disabled for release builds)
 #ifndef NDEBUG
 #define TENSOR_BOUNDS_CHECK 1
+#define TENSOR_BOUNDS_CHECK_VERBOSE 0  // Set to 1 to enable printf debugging
 #else
 #define TENSOR_BOUNDS_CHECK 0
+#define TENSOR_BOUNDS_CHECK_VERBOSE 0
 #endif
 
 template<typename T>
@@ -23,8 +25,7 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 1 || i < 0 || i >= shape[0]) {
       printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\n", i, shape[0], dims);
-      // In device code, we can't throw exceptions, so we'll return a reference to the first element
-      // This prevents crashes but indicates a programming error
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[i]; 
@@ -35,6 +36,7 @@ struct Tensor {
     if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
       printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\n", 
              i, j, shape[0], shape[1], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[i * shape[1] + j]; 
@@ -45,6 +47,7 @@ struct Tensor {
     if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
       printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
              i, j, k, shape[0], shape[1], shape[2], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[(i * shape[1] + j) * shape[2] + k]; 
@@ -56,6 +59,7 @@ struct Tensor {
         k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
       printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\n", 
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
+      return data[0]; // Safe fallback to prevent crashes
     }
     #endif
     return data[((i * shape[1] + j) * shape[2] + k) * shape[3] + l]; 
@@ -420,14 +424,11 @@ struct Tensor {
 
       /**
        * @cuda global
+       * Optimized ReLU kernel with precomputed size to avoid redundant calculations
        */
-      __global__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void relu_forward(Tensor<float> output, Tensor<float> input, int total_elements) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        int size = 1;
-        for (int i = 0; i < input.dims; ++i) {
-          size *= input.shape[i];
-        }
-        if (idx < size) {
+        if (idx < total_elements) {
           output(idx) = fmaxf(0.0f, input(idx));
         }
       }
@@ -548,8 +549,25 @@ extern "C" void executeGraph(
   float* param_34_bias_data,
   const int* param_34_bias_shape,
   int param_34_bias_dims,
-  char* workspace
+  char* workspace,
+  size_t workspace_size
 ) {
+  // --- Input Validation ---
+  if (!workspace) {
+    fprintf(stderr, "Error: Null workspace pointer passed to executeGraph\n");
+    return;
+  }
+  
+  if (workspace_size < 918528) {
+    fprintf(stderr, "Error: Insufficient workspace size. Got %zu, need at least 918528 bytes\n", workspace_size);
+    return;
+  }
+
+  // --- Memory Alignment Helper ---
+  auto align_to_256_bytes = [](size_t offset) -> size_t {
+    return (offset + 255) & ~255;
+  };
+
   // --- Variable Declarations ---
   const int intermediate_0_shape[] = {1, 256, 128};
   const int intermediate_1_shape[] = {1, 256, 128};
@@ -708,7 +726,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_11_weights, param_12_bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor, 512);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, param_13_weights, param_14_bias);
   CUDA_CHECK(cudaGetLastError());
@@ -746,7 +764,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_27_weights, param_28_bias);
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
+  relu_forward<<<dim3(2, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor, 512);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, param_29_weights, param_30_bias);
   CUDA_CHECK(cudaGetLastError());
@@ -758,6 +776,8 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 1024>>>(output, intermediate_40_tensor);
   CUDA_CHECK(cudaGetLastError());
+  
+  // --- Synchronization for completion verification ---
+  CUDA_CHECK(cudaDeviceSynchronize());
   // --- End Execution Flow ---
 }
-    

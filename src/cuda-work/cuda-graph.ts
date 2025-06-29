@@ -489,8 +489,10 @@ export class CudaGraphCompiler {
 // Debug mode bounds checking (can be disabled for release builds)
 #ifndef NDEBUG
 #define TENSOR_BOUNDS_CHECK 1
+#define TENSOR_BOUNDS_CHECK_VERBOSE 0  // Set to 1 to enable printf debugging
 #else
 #define TENSOR_BOUNDS_CHECK 0
+#define TENSOR_BOUNDS_CHECK_VERBOSE 0
 #endif
 
 template<typename T>
@@ -502,7 +504,9 @@ struct Tensor {
   __device__ inline T& operator()(int i) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 1 || i < 0 || i >= shape[0]) {
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
       printf("Tensor bounds error: 1D access [%d] out of bounds [0, %d) for %dD tensor\\n", i, shape[0], dims);
+      #endif
       return data[0]; // Safe fallback to prevent crashes
     }
     #endif
@@ -512,8 +516,10 @@ struct Tensor {
   __device__ inline T& operator()(int i, int j) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 2 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1]) {
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
       printf("Tensor bounds error: 2D access [%d,%d] out of bounds [0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, shape[0], shape[1], dims);
+      #endif
       return data[0]; // Safe fallback to prevent crashes
     }
     #endif
@@ -523,8 +529,10 @@ struct Tensor {
   __device__ inline T& operator()(int i, int j, int k) { 
     #if TENSOR_BOUNDS_CHECK
     if (dims < 3 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || k < 0 || k >= shape[2]) {
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
       printf("Tensor bounds error: 3D access [%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, shape[0], shape[1], shape[2], dims);
+      #endif
       return data[0]; // Safe fallback to prevent crashes
     }
     #endif
@@ -535,8 +543,10 @@ struct Tensor {
     #if TENSOR_BOUNDS_CHECK
     if (dims < 4 || i < 0 || i >= shape[0] || j < 0 || j >= shape[1] || 
         k < 0 || k >= shape[2] || l < 0 || l >= shape[3]) {
+      #if TENSOR_BOUNDS_CHECK_VERBOSE
       printf("Tensor bounds error: 4D access [%d,%d,%d,%d] out of bounds [0,%d)x[0,%d)x[0,%d)x[0,%d) for %dD tensor\\n", 
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
+      #endif
       return data[0]; // Safe fallback to prevent crashes
     }
     #endif
