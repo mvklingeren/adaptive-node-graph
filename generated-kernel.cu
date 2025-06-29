@@ -22,7 +22,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void dense_forward(
+      __global__ void dense_forward(
         Tensor<float> output, 
         Tensor<float> input, 
         Tensor<float> weights, 
