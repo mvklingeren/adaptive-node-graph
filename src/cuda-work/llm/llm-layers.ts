@@ -40,7 +40,7 @@ export class LayerNormLayer implements Layer {
       /**
        * @cuda global
        */
-      void layer_norm_forward(
+      __global__ void layer_norm_forward(
         Tensor<float> output,
         Tensor<float> input,
         Tensor<float> gamma,
@@ -124,7 +124,7 @@ export class SoftmaxLayer implements Layer {
       /**
        * @cuda global
        */
-      void softmax_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void softmax_forward(Tensor<float> output, Tensor<float> input) {
         // This kernel computes softmax over the last dimension.
         // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
         extern __shared__ float shared_mem[];

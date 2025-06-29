@@ -33,7 +33,7 @@ export class EmbeddingLayer implements Layer {
       /**
        * @cuda global
        */
-      void embedding_forward(Tensor<float> output, Tensor<int> input, Tensor<float> embeddings) {
+      __global__ void embedding_forward(Tensor<float> output, Tensor<int> input, Tensor<float> embeddings) {
         int batch_idx = blockIdx.y;
         int seq_idx = blockIdx.x;
 
@@ -82,7 +82,7 @@ export class PositionalEncodingLayer implements Layer {
       /**
        * @cuda global
        */
-      void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
         int batch_idx = blockIdx.z;
         int seq_idx = blockIdx.y;
         int embed_idx = blockIdx.x * blockDim.x + threadIdx.x;

@@ -408,10 +408,13 @@ export class CudaGraphCompiler {
             ...Array.from(node.parameters.keys())
         ].join(', ');
 
+        // Calculate shared memory requirements based on kernel type
+        const sharedMemSize = this.calculateSharedMemorySize(node);
         const gridDim = "dim3(1, 1, 1)";
         const blockDim = "dim3(256, 1, 1)";
         
-        executionCalls.push(`  ${node.functionName}<<<${gridDim}, ${blockDim}>>>(${kernelArgs});`);
+        executionCalls.push(`  ${node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelArgs});`);
+        executionCalls.push(`  CUDA_CHECK(cudaGetLastError());`);
     }
 
     const graphInputs = graph.getGraphInputs();
@@ -456,6 +459,16 @@ struct Tensor {
     const kernelCode = `
 #include <cuda_runtime.h>
 #include <math.h>
+
+// CUDA Error Checking Macro
+#define CUDA_CHECK(call) do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        fprintf(stderr, "CUDA error at %s:%d - %s\\n", __FILE__, __LINE__, \
+                cudaGetErrorString(err)); \
+        exit(1); \
+    } \
+} while(0)
 
 ${tensorStruct}
 
@@ -518,6 +531,8 @@ ${executionCalls.join("\n")}
     }
 
     const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>();
+    
+    // First pass: collect all intermediate tensors and their lifetimes
     executionOrder.forEach((node, i) => {
         for (const [outputPort, spec] of node.outputs) {
             const key = `${node.id}:${outputPort}`;
@@ -530,6 +545,10 @@ ${executionCalls.join("\n")}
                 intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 });
             }
         }
+    });
+
+    // Second pass: determine when each tensor is last used
+    executionOrder.forEach((node, i) => {
         for (const [inputPort, spec] of node.inputs) {
             if (spec.shape.includes(-1)) {
                  throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for input '${inputPort}' of node '${node.name}'.`);
@@ -538,32 +557,77 @@ ${executionCalls.join("\n")}
             if (conn) {
                 const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
                 if (intermediateTensors.has(sourceKey)) {
-                    intermediateTensors.get(sourceKey)!.liveEnd = i;
+                    // Update the last use time for this tensor
+                    intermediateTensors.get(sourceKey)!.liveEnd = Math.max(intermediateTensors.get(sourceKey)!.liveEnd, i);
                 }
             }
         }
     });
 
+    // Memory allocation with proper alignment and non-overlapping regions
     let workspaceSize = 0;
-    const blocks: {start: number, end: number, size: number}[] = [];
+    const allocatedRegions: {start: number, end: number, liveStart: number, liveEnd: number}[] = [];
+    
+    // Helper function to align memory to 16-byte boundaries
+    const alignTo16Bytes = (size: number): number => {
+        return Math.ceil(size / 16) * 16;
+    };
+
+    // Sort tensors by live start time for better memory reuse
     const sortedTensors = Array.from(intermediateTensors.entries()).sort((a, b) => a[1].liveStart - b[1].liveStart);
 
     for (const [key, tensor] of sortedTensors) {
+        const alignedSize = alignTo16Bytes(tensor.size);
         let placed = false;
-        for (const block of blocks) {
-            if (tensor.liveStart >= block.end && tensor.size <= block.size) {
-                tensor.offset = block.start;
-                block.end = tensor.liveEnd;
+        
+        // Try to find a region that can be reused
+        for (const region of allocatedRegions) {
+            // Check if this tensor's lifetime doesn't overlap with the region's current usage
+            if (tensor.liveStart > region.liveEnd && alignedSize <= (region.end - region.start)) {
+                // Reuse this region
+                tensor.offset = region.start;
+                region.liveStart = tensor.liveStart;
+                region.liveEnd = tensor.liveEnd;
                 placed = true;
                 break;
             }
         }
+        
         if (!placed) {
+            // Allocate new region
             tensor.offset = workspaceSize;
-            workspaceSize += tensor.size;
-            blocks.push({start: tensor.offset, end: tensor.liveEnd, size: tensor.size});
+            allocatedRegions.push({
+                start: workspaceSize,
+                end: workspaceSize + alignedSize,
+                liveStart: tensor.liveStart,
+                liveEnd: tensor.liveEnd
+            });
+            workspaceSize += alignedSize;
         }
     }
+    
+    console.log(`[Memory Planning] Total workspace size: ${workspaceSize} bytes (${(workspaceSize / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Memory Planning] Allocated ${intermediateTensors.size} intermediate tensors in ${allocatedRegions.length} memory regions`);
+    
     return { intermediateTensors, workspaceSize, tensorRegistry };
+  }
+
+  private calculateSharedMemorySize(node: CudaNode): number {
+    // Calculate shared memory requirements based on kernel function name
+    switch (node.functionName) {
+      case 'softmax_forward':
+        // Softmax needs shared memory for reduction operations
+        // Size: blockDim.x * sizeof(float) = 256 * 4 = 1024 bytes
+        return 1024;
+      
+      case 'layer_norm_forward':
+        // Layer norm needs shared memory for mean and variance calculations
+        // Size: blockDim.x * sizeof(float) = 256 * 4 = 1024 bytes
+        return 1024;
+      
+      default:
+        // Most kernels don't need shared memory
+        return 0;
+    }
   }
 }

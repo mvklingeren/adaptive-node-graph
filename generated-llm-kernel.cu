@@ -2,6 +2,9 @@
 #include <cuda_runtime.h>
 #include <math.h>
 
+// CUDA Error Checking Macro
+#define CUDA_CHECK(call) do {     cudaError_t err = call;     if (err != cudaSuccess) {         fprintf(stderr, "CUDA error at %s:%d - %s\n", __FILE__, __LINE__,                 cudaGetErrorString(err));         exit(1);     } } while(0)
+
 
 template<typename T>
 struct Tensor {
@@ -22,7 +25,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void embedding_forward(Tensor<float> output, Tensor<int> input, Tensor<float> embeddings) {
+      __global__ void embedding_forward(Tensor<float> output, Tensor<int> input, Tensor<float> embeddings) {
         int batch_idx = blockIdx.y;
         int seq_idx = blockIdx.x;
 
@@ -39,7 +42,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void positional_encoding_forward(Tensor<float> output, Tensor<float> input) {
         int batch_idx = blockIdx.z;
         int seq_idx = blockIdx.y;
         int embed_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -62,7 +65,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void dense_forward(
+      __global__ void dense_forward(
         Tensor<float> output, 
         Tensor<float> input, 
         Tensor<float> weights, 
@@ -88,7 +91,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void split_heads_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void split_heads_forward(Tensor<float> output, Tensor<float> input) {
         // Input: [batch, seq_len, embed_dim]
         // Output: [batch, num_heads, seq_len, head_dim]
         int batch_idx = blockIdx.z;
@@ -110,7 +113,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void batched_matmul_transpose_b(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void batched_matmul_transpose_b(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
         int row = blockIdx.x;
@@ -130,7 +133,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void scale_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void scale_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = input.shape[0] * input.shape[1] * input.shape[2] * input.shape[3];
         
@@ -144,7 +147,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void softmax_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void softmax_forward(Tensor<float> output, Tensor<float> input) {
         // This kernel computes softmax over the last dimension.
         // It handles both 2D tensors [batch, features] and 4D tensors [batch, heads, seq, seq]
         extern __shared__ float shared_mem[];
@@ -230,7 +233,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void batched_matmul(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void batched_matmul(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
         int row = blockIdx.x;
@@ -250,7 +253,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void concat_heads_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void concat_heads_forward(Tensor<float> output, Tensor<float> input) {
         // Input: [batch, num_heads, seq_len, head_dim]
         // Output: [batch, seq_len, embed_dim]
         int batch_idx = blockIdx.z;
@@ -272,7 +275,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      __device__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         // This is a simplified approach. A robust implementation would handle
         // arbitrary dimensions and calculate total size on the host.
@@ -290,7 +293,7 @@ struct Tensor {
       /**
        * @cuda global
        */
-      void layer_norm_forward(
+      __global__ void layer_norm_forward(
         Tensor<float> output,
         Tensor<float> input,
         Tensor<float> gamma,
@@ -350,7 +353,10 @@ struct Tensor {
     
 
 
-      __device__ void relu_forward(Tensor<float> output, Tensor<float> input) {
+      /**
+       * @cuda global
+       */
+      __global__ void relu_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = 1;
         for (int i = 0; i < input.dims; ++i) {
@@ -434,46 +440,46 @@ extern "C" void executeGraph(
 
   // --- Tensor Struct Instantiation ---
   Tensor<float> intermediate_0_tensor = {(float*)(workspace + 0), intermediate_0_shape, 3};
-  Tensor<float> intermediate_1_tensor = {(float*)(workspace + 0), intermediate_1_shape, 3};
-  Tensor<float> intermediate_2_tensor = {(float*)(workspace + 131072), intermediate_2_shape, 2};
-  Tensor<float> intermediate_3_tensor = {(float*)(workspace + 131584), intermediate_3_shape, 2};
-  Tensor<float> intermediate_4_tensor = {(float*)(workspace + 132096), intermediate_4_shape, 2};
-  Tensor<float> intermediate_5_tensor = {(float*)(workspace + 132608), intermediate_5_shape, 4};
-  Tensor<float> intermediate_6_tensor = {(float*)(workspace + 198144), intermediate_6_shape, 4};
-  Tensor<float> intermediate_7_tensor = {(float*)(workspace + 263680), intermediate_7_shape, 4};
-  Tensor<float> intermediate_8_tensor = {(float*)(workspace + 329216), intermediate_8_shape, 4};
-  Tensor<float> intermediate_9_tensor = {(float*)(workspace + 329216), intermediate_9_shape, 4};
-  Tensor<float> intermediate_10_tensor = {(float*)(workspace + 329216), intermediate_10_shape, 4};
-  Tensor<float> intermediate_11_tensor = {(float*)(workspace + 132608), intermediate_11_shape, 4};
-  Tensor<float> intermediate_12_tensor = {(float*)(workspace + 132608), intermediate_12_shape, 3};
-  Tensor<float> intermediate_13_tensor = {(float*)(workspace + 131072), intermediate_13_shape, 2};
-  Tensor<float> intermediate_14_tensor = {(float*)(workspace + 0), intermediate_14_shape, 3};
+  Tensor<float> intermediate_1_tensor = {(float*)(workspace + 131072), intermediate_1_shape, 3};
+  Tensor<float> intermediate_2_tensor = {(float*)(workspace + 0), intermediate_2_shape, 2};
+  Tensor<float> intermediate_3_tensor = {(float*)(workspace + 262144), intermediate_3_shape, 2};
+  Tensor<float> intermediate_4_tensor = {(float*)(workspace + 262656), intermediate_4_shape, 2};
+  Tensor<float> intermediate_5_tensor = {(float*)(workspace + 263168), intermediate_5_shape, 4};
+  Tensor<float> intermediate_6_tensor = {(float*)(workspace + 0), intermediate_6_shape, 4};
+  Tensor<float> intermediate_7_tensor = {(float*)(workspace + 328704), intermediate_7_shape, 4};
+  Tensor<float> intermediate_8_tensor = {(float*)(workspace + 394240), intermediate_8_shape, 4};
+  Tensor<float> intermediate_9_tensor = {(float*)(workspace + 656384), intermediate_9_shape, 4};
+  Tensor<float> intermediate_10_tensor = {(float*)(workspace + 394240), intermediate_10_shape, 4};
+  Tensor<float> intermediate_11_tensor = {(float*)(workspace + 0), intermediate_11_shape, 4};
+  Tensor<float> intermediate_12_tensor = {(float*)(workspace + 263168), intermediate_12_shape, 3};
+  Tensor<float> intermediate_13_tensor = {(float*)(workspace + 0), intermediate_13_shape, 2};
+  Tensor<float> intermediate_14_tensor = {(float*)(workspace + 394240), intermediate_14_shape, 3};
   Tensor<float> intermediate_15_tensor = {(float*)(workspace + 0), intermediate_15_shape, 3};
-  Tensor<float> intermediate_16_tensor = {(float*)(workspace + 132608), intermediate_16_shape, 2};
-  Tensor<float> intermediate_17_tensor = {(float*)(workspace + 132608), intermediate_17_shape, 2};
+  Tensor<float> intermediate_16_tensor = {(float*)(workspace + 131072), intermediate_16_shape, 2};
+  Tensor<float> intermediate_17_tensor = {(float*)(workspace + 263168), intermediate_17_shape, 2};
   Tensor<float> intermediate_18_tensor = {(float*)(workspace + 131072), intermediate_18_shape, 2};
-  Tensor<float> intermediate_19_tensor = {(float*)(workspace + 0), intermediate_19_shape, 3};
+  Tensor<float> intermediate_19_tensor = {(float*)(workspace + 394240), intermediate_19_shape, 3};
   Tensor<float> intermediate_20_tensor = {(float*)(workspace + 0), intermediate_20_shape, 3};
   Tensor<float> intermediate_21_tensor = {(float*)(workspace + 131072), intermediate_21_shape, 2};
-  Tensor<float> intermediate_22_tensor = {(float*)(workspace + 131584), intermediate_22_shape, 2};
-  Tensor<float> intermediate_23_tensor = {(float*)(workspace + 132096), intermediate_23_shape, 2};
-  Tensor<float> intermediate_24_tensor = {(float*)(workspace + 132608), intermediate_24_shape, 4};
-  Tensor<float> intermediate_25_tensor = {(float*)(workspace + 198144), intermediate_25_shape, 4};
-  Tensor<float> intermediate_26_tensor = {(float*)(workspace + 263680), intermediate_26_shape, 4};
-  Tensor<float> intermediate_27_tensor = {(float*)(workspace + 329216), intermediate_27_shape, 4};
-  Tensor<float> intermediate_28_tensor = {(float*)(workspace + 329216), intermediate_28_shape, 4};
-  Tensor<float> intermediate_29_tensor = {(float*)(workspace + 329216), intermediate_29_shape, 4};
-  Tensor<float> intermediate_30_tensor = {(float*)(workspace + 132608), intermediate_30_shape, 4};
-  Tensor<float> intermediate_31_tensor = {(float*)(workspace + 132608), intermediate_31_shape, 3};
+  Tensor<float> intermediate_22_tensor = {(float*)(workspace + 262144), intermediate_22_shape, 2};
+  Tensor<float> intermediate_23_tensor = {(float*)(workspace + 262656), intermediate_23_shape, 2};
+  Tensor<float> intermediate_24_tensor = {(float*)(workspace + 263168), intermediate_24_shape, 4};
+  Tensor<float> intermediate_25_tensor = {(float*)(workspace + 131072), intermediate_25_shape, 4};
+  Tensor<float> intermediate_26_tensor = {(float*)(workspace + 328704), intermediate_26_shape, 4};
+  Tensor<float> intermediate_27_tensor = {(float*)(workspace + 394240), intermediate_27_shape, 4};
+  Tensor<float> intermediate_28_tensor = {(float*)(workspace + 656384), intermediate_28_shape, 4};
+  Tensor<float> intermediate_29_tensor = {(float*)(workspace + 394240), intermediate_29_shape, 4};
+  Tensor<float> intermediate_30_tensor = {(float*)(workspace + 131072), intermediate_30_shape, 4};
+  Tensor<float> intermediate_31_tensor = {(float*)(workspace + 263168), intermediate_31_shape, 3};
   Tensor<float> intermediate_32_tensor = {(float*)(workspace + 131072), intermediate_32_shape, 2};
-  Tensor<float> intermediate_33_tensor = {(float*)(workspace + 0), intermediate_33_shape, 3};
+  Tensor<float> intermediate_33_tensor = {(float*)(workspace + 394240), intermediate_33_shape, 3};
   Tensor<float> intermediate_34_tensor = {(float*)(workspace + 0), intermediate_34_shape, 3};
-  Tensor<float> intermediate_35_tensor = {(float*)(workspace + 132608), intermediate_35_shape, 2};
-  Tensor<float> intermediate_36_tensor = {(float*)(workspace + 132608), intermediate_36_shape, 2};
+  Tensor<float> intermediate_35_tensor = {(float*)(workspace + 131072), intermediate_35_shape, 2};
+  Tensor<float> intermediate_36_tensor = {(float*)(workspace + 263168), intermediate_36_shape, 2};
   Tensor<float> intermediate_37_tensor = {(float*)(workspace + 131072), intermediate_37_shape, 2};
-  Tensor<float> intermediate_38_tensor = {(float*)(workspace + 0), intermediate_38_shape, 3};
+  Tensor<float> intermediate_38_tensor = {(float*)(workspace + 394240), intermediate_38_shape, 3};
   Tensor<float> intermediate_39_tensor = {(float*)(workspace + 0), intermediate_39_shape, 3};
-  Tensor<float> intermediate_40_tensor = {(float*)(workspace + 0), intermediate_40_shape, 2};
+  Tensor<float> intermediate_40_tensor = {(float*)(workspace + 131072), intermediate_40_shape, 2};
   Tensor<float> input = {input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
   Tensor<float> embeddings = {embeddings_data, embeddings_shape, embeddings_dims};
@@ -483,48 +489,90 @@ extern "C" void executeGraph(
   Tensor<float> beta = {beta_data, beta_shape, beta_dims};
 
   // --- Kernel Launch Sequence ---
-  embedding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_0_tensor, input, embeddings);
-  positional_encoding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_1_tensor, intermediate_0_tensor);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_2_tensor, intermediate_1_tensor, weights, bias);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_3_tensor, intermediate_1_tensor, weights, bias);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_4_tensor, intermediate_1_tensor, weights, bias);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_5_tensor, intermediate_2_tensor);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_6_tensor, intermediate_3_tensor);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_7_tensor, intermediate_4_tensor);
-  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
-  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_9_tensor, intermediate_8_tensor);
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_10_tensor, intermediate_9_tensor);
-  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
-  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_12_tensor, intermediate_11_tensor);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_13_tensor, intermediate_12_tensor, weights, bias);
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_15_tensor, intermediate_14_tensor, gamma, beta);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_16_tensor, intermediate_15_tensor, weights, bias);
-  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_17_tensor, intermediate_16_tensor);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_18_tensor, intermediate_17_tensor, weights, bias);
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_20_tensor, intermediate_19_tensor, gamma, beta);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_21_tensor, intermediate_20_tensor, weights, bias);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_22_tensor, intermediate_20_tensor, weights, bias);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_23_tensor, intermediate_20_tensor, weights, bias);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_24_tensor, intermediate_21_tensor);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_25_tensor, intermediate_22_tensor);
-  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_26_tensor, intermediate_23_tensor);
-  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
-  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_28_tensor, intermediate_27_tensor);
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_29_tensor, intermediate_28_tensor);
-  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
-  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_31_tensor, intermediate_30_tensor);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_32_tensor, intermediate_31_tensor, weights, bias);
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_34_tensor, intermediate_33_tensor, gamma, beta);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_35_tensor, intermediate_34_tensor, weights, bias);
-  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_36_tensor, intermediate_35_tensor);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_37_tensor, intermediate_36_tensor, weights, bias);
-  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
-  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_39_tensor, intermediate_38_tensor, gamma, beta);
-  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(intermediate_40_tensor, intermediate_39_tensor, weights, bias);
-  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1)>>>(output, intermediate_40_tensor);
+  embedding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_0_tensor, input, embeddings);
+  CUDA_CHECK(cudaGetLastError());
+  positional_encoding_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_6_tensor, intermediate_3_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_7_tensor, intermediate_4_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_12_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, gamma, beta);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_17_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, gamma, beta);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_20_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_25_tensor, intermediate_22_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  split_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  batched_matmul_transpose_b<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_27_tensor, intermediate_24_tensor, intermediate_25_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  scale_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_29_tensor, intermediate_28_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  batched_matmul<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  concat_heads_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_31_tensor, intermediate_30_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_32_tensor, intermediate_31_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, gamma, beta);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  relu_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_35_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_37_tensor, intermediate_36_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  add_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
+  CUDA_CHECK(cudaGetLastError());
+  layer_norm_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, gamma, beta);
+  CUDA_CHECK(cudaGetLastError());
+  dense_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, weights, bias);
+  CUDA_CHECK(cudaGetLastError());
+  softmax_forward<<<dim3(1, 1, 1), dim3(256, 1, 1), 1024>>>(output, intermediate_40_tensor);
+  CUDA_CHECK(cudaGetLastError());
   // --- End Execution Flow ---
 }
     

@@ -47,7 +47,7 @@ export class ScaleLayer implements Layer {
       /**
        * @cuda global
        */
-      void scale_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void scale_forward(Tensor<float> output, Tensor<float> input) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         int size = input.shape[0] * input.shape[1] * input.shape[2] * input.shape[3];
         
@@ -87,7 +87,7 @@ export class BatchedMatMul implements Layer {
       /**
        * @cuda global
        */
-      void ${this.functionName}(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
+      __global__ void ${this.functionName}(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int batch_idx = blockIdx.z;
         int head_idx = blockIdx.y;
         int row = blockIdx.x;
@@ -137,7 +137,7 @@ export class SplitHeads implements Layer {
       /**
        * @cuda global
        */
-      void split_heads_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void split_heads_forward(Tensor<float> output, Tensor<float> input) {
         // Input: [batch, seq_len, embed_dim]
         // Output: [batch, num_heads, seq_len, head_dim]
         int batch_idx = blockIdx.z;
@@ -180,7 +180,7 @@ export class ConcatHeads implements Layer {
       /**
        * @cuda global
        */
-      void concat_heads_forward(Tensor<float> output, Tensor<float> input) {
+      __global__ void concat_heads_forward(Tensor<float> output, Tensor<float> input) {
         // Input: [batch, num_heads, seq_len, head_dim]
         // Output: [batch, seq_len, embed_dim]
         int batch_idx = blockIdx.z;

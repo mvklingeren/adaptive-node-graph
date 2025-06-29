@@ -38,8 +38,37 @@ export function tsToCuda(code: string): {
       }
 
       const body = processBlock(node.body);
-      const leadingComments = ts.getLeadingCommentRanges(code, node.pos);
-      const isGlobal = leadingComments?.some(comment => code.substring(comment.pos, comment.end).includes("@cuda global"));
+      
+      // Get all comments associated with this function
+      const sourceFileText = sourceFile.getFullText();
+      const leadingComments = ts.getLeadingCommentRanges(sourceFileText, node.pos);
+      
+      // Check for @cuda global directive in comments
+      let isGlobal = false;
+      if (leadingComments) {
+        for (const comment of leadingComments) {
+          const commentText = sourceFileText.substring(comment.pos, comment.end);
+          if (commentText.includes("@cuda global")) {
+            isGlobal = true;
+            break;
+          }
+        }
+      }
+      
+      // Also check for @cuda global in the device code itself (for embedded comments)
+      if (!isGlobal && code.includes("@cuda global")) {
+        // Look for the comment pattern before this function
+        const functionStart = node.getStart(sourceFile);
+        const precedingText = code.substring(0, functionStart);
+        const lines = precedingText.split('\n');
+        // Check the last few lines for the @cuda global comment
+        for (let i = Math.max(0, lines.length - 10); i < lines.length; i++) {
+          if (lines[i].includes("@cuda global")) {
+            isGlobal = true;
+            break;
+          }
+        }
+      }
 
       const kernelType = isGlobal ? "__global__" : "__device__";
       const deviceCode = `${kernelType} void ${functionName}(${paramStrings.join(
