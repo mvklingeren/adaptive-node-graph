@@ -449,8 +449,7 @@ export class CudaGraphCompiler {
         ].join(', ');
 
         // Calculate optimal grid and block dimensions based on tensor shapes and kernel type
-        const { gridDim, blockDim } = this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
-        const sharedMemSize = this.calculateSharedMemorySize(node);
+        const { gridDim, blockDim, sharedMemSize } = this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
         
         executionCalls.push(`  ${node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelArgs});`);
         executionCalls.push(`  CUDA_CHECK(cudaGetLastError());`);
@@ -761,11 +760,11 @@ ${executionCalls.join("\n")}
     node: CudaNode, 
     outputTensors: Map<string, string>, 
     inputTensors: Map<string, string>
-  ): { gridDim: string; blockDim: string } {
+  ): { gridDim: string; blockDim: string; sharedMemSize: number } {
     // Get the primary output tensor shape for grid calculation
     const primaryOutput = Array.from(node.outputs.values())[0];
     if (!primaryOutput) {
-      return { gridDim: "dim3(1, 1, 1)", blockDim: "dim3(256, 1, 1)" };
+      return { gridDim: "dim3(1, 1, 1)", blockDim: "dim3(256, 1, 1)", sharedMemSize: 0 };
     }
 
     const shape = primaryOutput.shape;
@@ -783,7 +782,8 @@ ${executionCalls.join("\n")}
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
           return {
             gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -798,7 +798,8 @@ ${executionCalls.join("\n")}
           const gridX = Math.ceil(embedDim / blockSize);
           return {
             gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`
+            blockDim: `dim3(${blockSize}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -818,13 +819,15 @@ ${executionCalls.join("\n")}
             gridX = Math.ceil(outputFeatures / alignedBlockSize);
             return {
               gridDim: `dim3(${gridX}, ${batchSize})`,
-              blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+              blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+              sharedMemSize: 0
             };
           }
           
           return {
             gridDim: `dim3(${Math.max(gridX, 1)}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`
+            blockDim: `dim3(${blockSize}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -840,7 +843,8 @@ ${executionCalls.join("\n")}
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
           return {
             gridDim: `dim3(${numHeads}, ${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -856,7 +860,8 @@ ${executionCalls.join("\n")}
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
           return {
             gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -868,9 +873,11 @@ ${executionCalls.join("\n")}
           const features = shape[1];
           const blockSize = Math.min(features, 1024);
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const finalBlockSize = Math.min(alignedBlockSize, 1024);
           return {
             gridDim: `dim3(${batchSize}, 1, 1)`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${finalBlockSize}, 1, 1)`,
+            sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float)
           };
         } else if (shape.length === 4) {
           // 4D case: [batch, heads, seq, seq]
@@ -879,9 +886,11 @@ ${executionCalls.join("\n")}
           const seqLen = shape[2];
           const blockSize = Math.min(seqLen, 1024);
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const finalBlockSize = Math.min(alignedBlockSize, 1024);
           return {
             gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${finalBlockSize}, 1, 1)`,
+            sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float)
           };
         }
         break;
@@ -894,9 +903,11 @@ ${executionCalls.join("\n")}
           const featureCount = shape[2];
           const blockSize = Math.min(featureCount, 1024);
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const finalBlockSize = Math.min(alignedBlockSize, 1024);
           return {
             gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${finalBlockSize}, 1, 1)`,
+            sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float)
           };
         }
         break;
@@ -910,7 +921,8 @@ ${executionCalls.join("\n")}
         const gridSize = Math.ceil(totalElements / blockSize);
         return {
           gridDim: `dim3(${gridSize}, 1, 1)`,
-          blockDim: `dim3(${blockSize}, 1, 1)`
+          blockDim: `dim3(${blockSize}, 1, 1)`,
+          sharedMemSize: 0
         };
 
       case 'concat_heads_forward':
@@ -923,7 +935,8 @@ ${executionCalls.join("\n")}
           const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
           return {
             gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
         break;
@@ -938,7 +951,8 @@ ${executionCalls.join("\n")}
           const gridSize = Math.ceil(features / alignedBlockSize);
           return {
             gridDim: `dim3(${gridSize}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`
+            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
+            sharedMemSize: 0
           };
         }
     }
@@ -949,26 +963,9 @@ ${executionCalls.join("\n")}
     const gridSize = Math.ceil(totalElements / blockSize);
     return {
       gridDim: `dim3(${Math.min(gridSize, 65535)}, 1, 1)`,
-      blockDim: `dim3(${blockSize}, 1, 1)`
+      blockDim: `dim3(${blockSize}, 1, 1)`,
+      sharedMemSize: 0
     };
   }
 
-  private calculateSharedMemorySize(node: CudaNode): number {
-    // Calculate shared memory requirements based on kernel function name
-    switch (node.functionName) {
-      case 'softmax_forward':
-        // Softmax needs shared memory for reduction operations
-        // Size: blockDim.x * sizeof(float) = 256 * 4 = 1024 bytes
-        return 1024;
-      
-      case 'layer_norm_forward':
-        // Layer norm needs shared memory for mean and variance calculations
-        // Size: blockDim.x * sizeof(float) = 256 * 4 = 1024 bytes
-        return 1024;
-      
-      default:
-        // Most kernels don't need shared memory
-        return 0;
-    }
-  }
 }

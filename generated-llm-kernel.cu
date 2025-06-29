@@ -115,7 +115,7 @@ struct Tensor {
 
         if (batch_idx < input.shape[0] && seq_idx < input.shape[1] && embed_idx < input.shape[2]) {
           float pos = (float)seq_idx;
-          float i = (float)(embed_idx / 2);  // Use integer division for proper frequency calculation
+          float i = (float)embed_idx / 2.0f;  // Use floating-point division for proper frequency calculation
           float val;
           if (embed_idx % 2 == 0) {
             val = sinf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
@@ -721,7 +721,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 1024>>>(intermediate_10_tensor, intermediate_9_tensor);
+  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 512>>>(intermediate_10_tensor, intermediate_9_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor, intermediate_7_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -731,7 +731,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_14_tensor, intermediate_1_tensor, intermediate_13_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_15_tensor, intermediate_14_tensor, param_9_gamma, param_10_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_15_tensor, intermediate_14_tensor, param_9_gamma, param_10_beta);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor, param_11_weights, param_12_bias);
   CUDA_CHECK(cudaGetLastError());
@@ -741,7 +741,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_19_tensor, intermediate_15_tensor, intermediate_18_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_20_tensor, intermediate_19_tensor, param_15_gamma, param_16_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_20_tensor, intermediate_19_tensor, param_15_gamma, param_16_beta);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(32, 1, 1), 0>>>(intermediate_21_tensor, intermediate_20_tensor, param_17_weights, param_18_bias);
   CUDA_CHECK(cudaGetLastError());
@@ -759,7 +759,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   scale_forward<<<dim3(256, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 1024>>>(intermediate_29_tensor, intermediate_28_tensor);
+  softmax_forward<<<dim3(128, 4, 1), dim3(128, 1, 1), 512>>>(intermediate_29_tensor, intermediate_28_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul<<<dim3(128, 4, 1), dim3(128, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, intermediate_26_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -769,7 +769,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_20_tensor, intermediate_32_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_34_tensor, intermediate_33_tensor, param_25_gamma, param_26_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_34_tensor, intermediate_33_tensor, param_25_gamma, param_26_beta);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(128, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_27_weights, param_28_bias);
   CUDA_CHECK(cudaGetLastError());
@@ -779,11 +779,11 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   add_forward<<<dim3(128, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_34_tensor, intermediate_37_tensor);
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 1024>>>(intermediate_39_tensor, intermediate_38_tensor, param_31_gamma, param_32_beta);
+  layer_norm_forward<<<dim3(256, 1), dim3(128, 1, 1), 512>>>(intermediate_39_tensor, intermediate_38_tensor, param_31_gamma, param_32_beta);
   CUDA_CHECK(cudaGetLastError());
   dense_forward<<<dim3(4, 1), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_39_tensor, param_33_weights, param_34_bias);
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 1024>>>(output, intermediate_40_tensor);
+  softmax_forward<<<dim3(1, 1, 1), dim3(1024, 1, 1), 4096>>>(output, intermediate_40_tensor);
   CUDA_CHECK(cudaGetLastError());
   
   // --- Synchronization for completion verification ---

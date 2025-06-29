@@ -89,7 +89,7 @@ export class PositionalEncodingLayer implements Layer {
 
         if (batch_idx < input.shape[0] && seq_idx < input.shape[1] && embed_idx < input.shape[2]) {
           float pos = (float)seq_idx;
-          float i = (float)(embed_idx / 2);  // Use integer division for proper frequency calculation
+          float i = (float)embed_idx / 2.0f;  // Use floating-point division for proper frequency calculation
           float val;
           if (embed_idx % 2 == 0) {
             val = sinf(pos / powf(10000.0f, (2.0f * i) / (float)input.shape[2]));
