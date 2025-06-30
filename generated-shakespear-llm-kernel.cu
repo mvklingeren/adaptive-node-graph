@@ -7,13 +7,20 @@
 #include <stdlib.h>
 
 // CUDA Error Checking Macro
-#define CUDA_CHECK(call) do {     cudaError_t err = call;     if (err != cudaSuccess) {         fprintf(stderr, "CUDA error at %s:%d - %s\n", __FILE__, __LINE__,                 cudaGetErrorString(err));         exit(1);     } } while(0)
+#define CUDA_CHECK(call) do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        fprintf(stderr, "CUDA error at %s:%d - %s\n", __FILE__, __LINE__, \
+                cudaGetErrorString(err)); \
+        exit(1); \
+    } \
+} while(0)
 
 
 // Debug mode bounds checking (can be disabled for release builds)
 #ifndef NDEBUG
 #define TENSOR_BOUNDS_CHECK 1
-#define TENSOR_BOUNDS_CHECK_VERBOSE 1  // Enable verbose error messages in debug mode
+#define TENSOR_BOUNDS_CHECK_VERBOSE 1
 #else
 #define TENSOR_BOUNDS_CHECK 0
 #define TENSOR_BOUNDS_CHECK_VERBOSE 0
@@ -47,7 +54,7 @@ struct Tensor {
              i, j, shape[0], shape[1], dims);
       #endif
       #if defined(__CUDA_ARCH__)
-      asm("trap;");  // Trigger a GPU trap/exception
+      asm("trap;");
       #endif
     }
     #endif
@@ -62,7 +69,7 @@ struct Tensor {
              i, j, k, shape[0], shape[1], shape[2], dims);
       #endif
       #if defined(__CUDA_ARCH__)
-      asm("trap;");  // Trigger a GPU trap/exception
+      asm("trap;");
       #endif
     }
     #endif
@@ -78,7 +85,7 @@ struct Tensor {
              i, j, k, l, shape[0], shape[1], shape[2], shape[3], dims);
       #endif
       #if defined(__CUDA_ARCH__)
-      asm("trap;");  // Trigger a GPU trap/exception
+      asm("trap;");
       #endif
     }
     #endif
@@ -106,8 +113,9 @@ private:
     size_t total_size;
     
     // Helper to align to 256-byte boundaries for optimal GPU performance
-    inline size_t align_to_256_bytes(size_t size) const {
-        return (size + 255) & ~255;
+    inline size_t align_to_boundary(size_t size) const {
+        const size_t alignment = 256;
+        return (size + alignment - 1) & ~(alignment - 1);
     }
     
 public:
@@ -115,7 +123,7 @@ public:
         : base_ptr(workspace), current_offset(0), total_size(workspace_size) {}
     
     void* allocate(size_t size) {
-        size_t aligned_size = align_to_256_bytes(size);
+        size_t aligned_size = align_to_boundary(size);
         
         if (current_offset + aligned_size > total_size) {
             fprintf(stderr, "ERROR: Workspace allocator out of memory. Requested: %zu bytes (aligned: %zu), Available: %zu bytes\n", 
@@ -829,333 +837,52 @@ public:
     
 
 // ======================================================
-// Main Host-Side Execution Function
+// Main Host-Side Execution Function (Array-Based Interface)
 // ======================================================
 extern "C" void executeGraph(
- int* input_data,
-  const int* input_shape,
-  int input_dims,
-  float* output_data,
-  const int* output_shape,
-  int output_dims,
-  float* param_0_embeddings_data,
-  const int* param_0_embeddings_shape,
-  int param_0_embeddings_dims,
-  float* param_1_frequencies_data,
-  const int* param_1_frequencies_shape,
-  int param_1_frequencies_dims,
-  float* param_2_weights_data,
-  const int* param_2_weights_shape,
-  int param_2_weights_dims,
-  float* param_3_bias_data,
-  const int* param_3_bias_shape,
-  int param_3_bias_dims,
-  float* param_4_weights_data,
-  const int* param_4_weights_shape,
-  int param_4_weights_dims,
-  float* param_5_bias_data,
-  const int* param_5_bias_shape,
-  int param_5_bias_dims,
-  float* param_6_weights_data,
-  const int* param_6_weights_shape,
-  int param_6_weights_dims,
-  float* param_7_bias_data,
-  const int* param_7_bias_shape,
-  int param_7_bias_dims,
-  float* param_8_weights_data,
-  const int* param_8_weights_shape,
-  int param_8_weights_dims,
-  float* param_9_bias_data,
-  const int* param_9_bias_shape,
-  int param_9_bias_dims,
-  float* param_10_gamma_data,
-  const int* param_10_gamma_shape,
-  int param_10_gamma_dims,
-  float* param_11_beta_data,
-  const int* param_11_beta_shape,
-  int param_11_beta_dims,
-  float* param_12_weights_data,
-  const int* param_12_weights_shape,
-  int param_12_weights_dims,
-  float* param_13_bias_data,
-  const int* param_13_bias_shape,
-  int param_13_bias_dims,
-  float* param_14_weights_data,
-  const int* param_14_weights_shape,
-  int param_14_weights_dims,
-  float* param_15_bias_data,
-  const int* param_15_bias_shape,
-  int param_15_bias_dims,
-  float* param_16_gamma_data,
-  const int* param_16_gamma_shape,
-  int param_16_gamma_dims,
-  float* param_17_beta_data,
-  const int* param_17_beta_shape,
-  int param_17_beta_dims,
-  float* param_18_weights_data,
-  const int* param_18_weights_shape,
-  int param_18_weights_dims,
-  float* param_19_bias_data,
-  const int* param_19_bias_shape,
-  int param_19_bias_dims,
-  float* param_20_weights_data,
-  const int* param_20_weights_shape,
-  int param_20_weights_dims,
-  float* param_21_bias_data,
-  const int* param_21_bias_shape,
-  int param_21_bias_dims,
-  float* param_22_weights_data,
-  const int* param_22_weights_shape,
-  int param_22_weights_dims,
-  float* param_23_bias_data,
-  const int* param_23_bias_shape,
-  int param_23_bias_dims,
-  float* param_24_weights_data,
-  const int* param_24_weights_shape,
-  int param_24_weights_dims,
-  float* param_25_bias_data,
-  const int* param_25_bias_shape,
-  int param_25_bias_dims,
-  float* param_26_gamma_data,
-  const int* param_26_gamma_shape,
-  int param_26_gamma_dims,
-  float* param_27_beta_data,
-  const int* param_27_beta_shape,
-  int param_27_beta_dims,
-  float* param_28_weights_data,
-  const int* param_28_weights_shape,
-  int param_28_weights_dims,
-  float* param_29_bias_data,
-  const int* param_29_bias_shape,
-  int param_29_bias_dims,
-  float* param_30_weights_data,
-  const int* param_30_weights_shape,
-  int param_30_weights_dims,
-  float* param_31_bias_data,
-  const int* param_31_bias_shape,
-  int param_31_bias_dims,
-  float* param_32_gamma_data,
-  const int* param_32_gamma_shape,
-  int param_32_gamma_dims,
-  float* param_33_beta_data,
-  const int* param_33_beta_shape,
-  int param_33_beta_dims,
-  float* param_34_weights_data,
-  const int* param_34_weights_shape,
-  int param_34_weights_dims,
-  float* param_35_bias_data,
-  const int* param_35_bias_shape,
-  int param_35_bias_dims,
-  float* param_36_weights_data,
-  const int* param_36_weights_shape,
-  int param_36_weights_dims,
-  float* param_37_bias_data,
-  const int* param_37_bias_shape,
-  int param_37_bias_dims,
-  float* param_38_weights_data,
-  const int* param_38_weights_shape,
-  int param_38_weights_dims,
-  float* param_39_bias_data,
-  const int* param_39_bias_shape,
-  int param_39_bias_dims,
-  float* param_40_weights_data,
-  const int* param_40_weights_shape,
-  int param_40_weights_dims,
-  float* param_41_bias_data,
-  const int* param_41_bias_shape,
-  int param_41_bias_dims,
-  float* param_42_gamma_data,
-  const int* param_42_gamma_shape,
-  int param_42_gamma_dims,
-  float* param_43_beta_data,
-  const int* param_43_beta_shape,
-  int param_43_beta_dims,
-  float* param_44_weights_data,
-  const int* param_44_weights_shape,
-  int param_44_weights_dims,
-  float* param_45_bias_data,
-  const int* param_45_bias_shape,
-  int param_45_bias_dims,
-  float* param_46_weights_data,
-  const int* param_46_weights_shape,
-  int param_46_weights_dims,
-  float* param_47_bias_data,
-  const int* param_47_bias_shape,
-  int param_47_bias_dims,
-  float* param_48_gamma_data,
-  const int* param_48_gamma_shape,
-  int param_48_gamma_dims,
-  float* param_49_beta_data,
-  const int* param_49_beta_shape,
-  int param_49_beta_dims,
-  float* param_50_weights_data,
-  const int* param_50_weights_shape,
-  int param_50_weights_dims,
-  float* param_51_bias_data,
-  const int* param_51_bias_shape,
-  int param_51_bias_dims,
-  float* param_52_weights_data,
-  const int* param_52_weights_shape,
-  int param_52_weights_dims,
-  float* param_53_bias_data,
-  const int* param_53_bias_shape,
-  int param_53_bias_dims,
-  float* param_54_weights_data,
-  const int* param_54_weights_shape,
-  int param_54_weights_dims,
-  float* param_55_bias_data,
-  const int* param_55_bias_shape,
-  int param_55_bias_dims,
-  float* param_56_weights_data,
-  const int* param_56_weights_shape,
-  int param_56_weights_dims,
-  float* param_57_bias_data,
-  const int* param_57_bias_shape,
-  int param_57_bias_dims,
-  float* param_58_gamma_data,
-  const int* param_58_gamma_shape,
-  int param_58_gamma_dims,
-  float* param_59_beta_data,
-  const int* param_59_beta_shape,
-  int param_59_beta_dims,
-  float* param_60_weights_data,
-  const int* param_60_weights_shape,
-  int param_60_weights_dims,
-  float* param_61_bias_data,
-  const int* param_61_bias_shape,
-  int param_61_bias_dims,
-  float* param_62_weights_data,
-  const int* param_62_weights_shape,
-  int param_62_weights_dims,
-  float* param_63_bias_data,
-  const int* param_63_bias_shape,
-  int param_63_bias_dims,
-  float* param_64_gamma_data,
-  const int* param_64_gamma_shape,
-  int param_64_gamma_dims,
-  float* param_65_beta_data,
-  const int* param_65_beta_shape,
-  int param_65_beta_dims,
-  float* param_66_weights_data,
-  const int* param_66_weights_shape,
-  int param_66_weights_dims,
-  float* param_67_bias_data,
-  const int* param_67_bias_shape,
-  int param_67_bias_dims,
-  float* param_68_weights_data,
-  const int* param_68_weights_shape,
-  int param_68_weights_dims,
-  float* param_69_bias_data,
-  const int* param_69_bias_shape,
-  int param_69_bias_dims,
-  float* param_70_weights_data,
-  const int* param_70_weights_shape,
-  int param_70_weights_dims,
-  float* param_71_bias_data,
-  const int* param_71_bias_shape,
-  int param_71_bias_dims,
-  float* param_72_weights_data,
-  const int* param_72_weights_shape,
-  int param_72_weights_dims,
-  float* param_73_bias_data,
-  const int* param_73_bias_shape,
-  int param_73_bias_dims,
-  float* param_74_gamma_data,
-  const int* param_74_gamma_shape,
-  int param_74_gamma_dims,
-  float* param_75_beta_data,
-  const int* param_75_beta_shape,
-  int param_75_beta_dims,
-  float* param_76_weights_data,
-  const int* param_76_weights_shape,
-  int param_76_weights_dims,
-  float* param_77_bias_data,
-  const int* param_77_bias_shape,
-  int param_77_bias_dims,
-  float* param_78_weights_data,
-  const int* param_78_weights_shape,
-  int param_78_weights_dims,
-  float* param_79_bias_data,
-  const int* param_79_bias_shape,
-  int param_79_bias_dims,
-  float* param_80_gamma_data,
-  const int* param_80_gamma_shape,
-  int param_80_gamma_dims,
-  float* param_81_beta_data,
-  const int* param_81_beta_shape,
-  int param_81_beta_dims,
-  float* param_82_weights_data,
-  const int* param_82_weights_shape,
-  int param_82_weights_dims,
-  float* param_83_bias_data,
-  const int* param_83_bias_shape,
-  int param_83_bias_dims,
-  float* param_84_weights_data,
-  const int* param_84_weights_shape,
-  int param_84_weights_dims,
-  float* param_85_bias_data,
-  const int* param_85_bias_shape,
-  int param_85_bias_dims,
-  float* param_86_weights_data,
-  const int* param_86_weights_shape,
-  int param_86_weights_dims,
-  float* param_87_bias_data,
-  const int* param_87_bias_shape,
-  int param_87_bias_dims,
-  float* param_88_weights_data,
-  const int* param_88_weights_shape,
-  int param_88_weights_dims,
-  float* param_89_bias_data,
-  const int* param_89_bias_shape,
-  int param_89_bias_dims,
-  float* param_90_gamma_data,
-  const int* param_90_gamma_shape,
-  int param_90_gamma_dims,
-  float* param_91_beta_data,
-  const int* param_91_beta_shape,
-  int param_91_beta_dims,
-  float* param_92_weights_data,
-  const int* param_92_weights_shape,
-  int param_92_weights_dims,
-  float* param_93_bias_data,
-  const int* param_93_bias_shape,
-  int param_93_bias_dims,
-  float* param_94_weights_data,
-  const int* param_94_weights_shape,
-  int param_94_weights_dims,
-  float* param_95_bias_data,
-  const int* param_95_bias_shape,
-  int param_95_bias_dims,
-  float* param_96_gamma_data,
-  const int* param_96_gamma_shape,
-  int param_96_gamma_dims,
-  float* param_97_beta_data,
-  const int* param_97_beta_shape,
-  int param_97_beta_dims,
-  float* param_98_weights_data,
-  const int* param_98_weights_shape,
-  int param_98_weights_dims,
-  float* param_99_bias_data,
-  const int* param_99_bias_shape,
-  int param_99_bias_dims,
-  char* workspace,
-  size_t workspace_size
+    // Input tensor
+    void* input_data,
+    const int* input_shape,
+    int input_dims,
+    const char* input_dtype,
+    
+    // Output tensor
+    void* output_data,
+    const int* output_shape,
+    int output_dims,
+    const char* output_dtype,
+    
+    // Parameters bundle
+    void** param_data,
+    const int** param_shapes,
+    const int* param_dims,
+    const char** param_dtypes,
+    int param_count,
+    
+    // Workspace
+    char* workspace,
+    size_t workspace_size
 ) {
- // --- Input Validation ---
- if (!workspace) {
-   fprintf(stderr, "Error: Null workspace pointer passed to executeGraph\n");
-   return;
- }
- 
- if (workspace_size < 385037108) {
-   fprintf(stderr, "Error: Insufficient workspace size. Required: 385037108 bytes, Provided: %zu bytes\n", workspace_size);
-   return;
- }
- 
- // --- Initialize Dynamic Memory Allocator ---
- WorkspaceAllocator allocator(workspace, workspace_size);
+    // --- Input Validation ---
+    if (!workspace) {
+        fprintf(stderr, "Error: Null workspace pointer passed to executeGraph\n");
+        return;
+    }
+    
+    if (workspace_size < 124570829) {
+        fprintf(stderr, "Error: Insufficient workspace size. Required: 124570829 bytes, Provided: %zu bytes\n", workspace_size);
+        return;
+    }
+    
+    if (param_count != 100) {
+        fprintf(stderr, "Error: Expected 100 parameters, got %d\n", param_count);
+        return;
+    }
+    
+    // --- Initialize Dynamic Memory Allocator ---
+    WorkspaceAllocator allocator(workspace, workspace_size);
 
- // --- Variable Declarations ---
+    // --- Variable Declarations ---
   const int intermediate_0_shape[] = {32, 128, 384};
   const int intermediate_1_shape[] = {32, 128, 384};
   const int intermediate_2_shape[] = {32, 128, 384};
@@ -1268,1123 +995,630 @@ extern "C" void executeGraph(
   const int intermediate_109_shape[] = {32, 384, 384};
   const int intermediate_110_shape[] = {32, 65};
 
- // --- Tensor Struct Instantiation ---
-  // Pool: pool_cudanode_c01ac639-d2ec-4030-97be-0817049e7ad3:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_0 allocation would exceed workspace bounds\n");
-    return;
-  }
+    // --- Create Parameter Tensors ---
+    Tensor<float> param_tensors[100];
+    for (int i = 0; i < 100; i++) {
+        param_tensors[i] = {
+            (float*)param_data[i],
+            param_shapes[i],
+            param_dims[i]
+        };
+    }
+
+    // --- Tensor Struct Instantiation ---
+  // Pool: pool_cudanode_8a8847ef-22d4-44b3-977c-67c3a2e91daf:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_0_data = (float*)(workspace + 0);
   Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 3};
-  // Pool: pool_cudanode_2f852d01-cb39-47e9-9d08-164f8b467f58:output, Offset: 6291456, Size: 6291456 bytes
-  if (6291456 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_1 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_1_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_d2365dc2-4df4-4bf9-a199-3031c635dda6:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_1_data = (float*)(workspace + 0);
   Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 3};
-  // Pool: pool_cudanode_a730d3de-3ad4-48a7-b014-c215c1f7d990:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_2 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_ec2f861c-fa21-4ed0-8903-7171b5b43645:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_2_data = (float*)(workspace + 0);
   Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 3};
-  // Pool: pool_cudanode_920df200-336a-4485-bd82-736e17a8995b:output, Offset: 12582912, Size: 6291456 bytes
-  if (12582912 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_3 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_3_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_826e842e-b66d-4765-aca1-a762cfbf77ee:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_3_data = (float*)(workspace + 0);
   Tensor<float> intermediate_3_tensor = {intermediate_3_data, intermediate_3_shape, 3};
-  // Pool: pool_cudanode_5f338be8-a44e-4ab7-b5a5-48827b1d05c3:output, Offset: 18874368, Size: 6291456 bytes
-  if (18874368 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_4 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_4_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_0a626342-66eb-4c95-8c13-e3da97554699:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_4_data = (float*)(workspace + 0);
   Tensor<float> intermediate_4_tensor = {intermediate_4_data, intermediate_4_shape, 3};
-  // Pool: pool_cudanode_9a98bca6-c0dc-43a5-aa23-c5be89d6ca0f:output, Offset: 25165824, Size: 6291456 bytes
-  if (25165824 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_5 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_5_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_f5d71b33-1766-472b-a04c-db3d8c0630cf:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_5_data = (float*)(workspace + 0);
   Tensor<float> intermediate_5_tensor = {intermediate_5_data, intermediate_5_shape, 4};
-  // Pool: pool_cudanode_b0a06804-ff30-4162-945d-52b0ce6ea09c:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_6 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_dbddc772-0e26-45c5-b193-a98af7ef0316:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_6_data = (float*)(workspace + 0);
   Tensor<float> intermediate_6_tensor = {intermediate_6_data, intermediate_6_shape, 4};
-  // Pool: pool_cudanode_dde896cf-2c98-4dbf-88db-4f7e50f853f3:output, Offset: 12582912, Size: 6291456 bytes
-  if (12582912 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_7 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_7_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_59096e9a-40b0-400f-acc8-ced0aa8c676d:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_7_data = (float*)(workspace + 0);
   Tensor<float> intermediate_7_tensor = {intermediate_7_data, intermediate_7_shape, 4};
-  // Pool: pool_cudanode_480f39f6-0b45-40c3-8973-61fa1071fa98:output, Offset: 31457280, Size: 12582912 bytes
-  if (31457280 + 12582912 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_8 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_8_data = (float*)(workspace + 31457280);
+  // Pool: pool_cudanode_57754d67-671f-44d1-8e90-cb01bf724670:output, Offset: 0, Size: 12582912 bytes
+  float* intermediate_8_data = (float*)(workspace + 0);
   Tensor<float> intermediate_8_tensor = {intermediate_8_data, intermediate_8_shape, 4};
-  // Pool: pool_cudanode_c9753b35-c9fd-4fad-85d5-23b164064475:output, Offset: 18874368, Size: 12582912 bytes
-  if (18874368 + 12582912 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_9 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_9_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_9039cc3b-6be6-4527-ac74-6c4b5200b57f:output, Offset: 0, Size: 12582912 bytes
+  float* intermediate_9_data = (float*)(workspace + 0);
   Tensor<float> intermediate_9_tensor = {intermediate_9_data, intermediate_9_shape, 4};
-  // Pool: pool_cudanode_8abe17ee-fc53-4173-9f9c-fdc961c7e998:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_10 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_2e202199-e702-4936-8f59-7ff0f0268ffe:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_10_data = (float*)(workspace + 0);
   Tensor<float> intermediate_10_tensor = {intermediate_10_data, intermediate_10_shape, 4};
-  // Pool: pool_cudanode_772396ed-beae-452b-bfda-ba6f0b79e1eb:output, Offset: 12582912, Size: 6291456 bytes
-  if (12582912 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_11 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_11_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_c1299b86-7c61-4bcd-af67-1f264e23fec8:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_11_data = (float*)(workspace + 0);
   Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 3};
-  // Pool: pool_cudanode_86222547-81c0-4eca-94e0-91256636b242:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_12 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_a0fbbd13-f040-422b-b4ca-4815bac8d2d6:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_12_data = (float*)(workspace + 0);
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
-  // Pool: pool_cudanode_71073168-cbf9-40a6-9d5d-4cd469be076b:output, Offset: 12582912, Size: 6291456 bytes
-  if (12582912 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_13 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_13_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_4188ef23-81f7-4b8b-9d26-d10be31f570d:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_13_data = (float*)(workspace + 0);
   Tensor<float> intermediate_13_tensor = {intermediate_13_data, intermediate_13_shape, 3};
-  // Pool: pool_cudanode_cc0cb662-2500-4bb6-825a-dc57b7169b6d:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_14 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_06fd6ac9-9c9a-4d02-91cd-c228acde3022:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_14_data = (float*)(workspace + 0);
   Tensor<float> intermediate_14_tensor = {intermediate_14_data, intermediate_14_shape, 3};
-  // Pool: pool_cudanode_e96c8294-4a69-4156-af08-3c3a56f076c7:output, Offset: 12582912, Size: 196608 bytes
-  if (12582912 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_15 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_15_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_69a79454-9b7b-45f8-be3e-459beda998c6:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_15_data = (float*)(workspace + 0);
   Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
-  // Pool: pool_cudanode_b2a4ab19-002a-4a1e-8b45-5a7401086d34:output, Offset: 12779520, Size: 196608 bytes
-  if (12779520 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_16 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_16_data = (float*)(workspace + 12779520);
+  // Pool: pool_cudanode_ebcee4f1-3fc5-49e5-9e05-934a4ed5f7a7:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_16_data = (float*)(workspace + 0);
   Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
-  // Pool: pool_cudanode_79703df6-147e-44c0-a14e-b8955de7a4d0:output, Offset: 12582912, Size: 49152 bytes
-  if (12582912 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_17 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_17_data = (float*)(workspace + 12582912);
+  // Pool: pool_cudanode_645ad84b-0b23-484f-bb7e-7d41b4cf6542:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_17_data = (float*)(workspace + 0);
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  // Pool: pool_cudanode_cc7d62cb-361e-4ca1-90f2-d9bd9700be6a:output, Offset: 12632064, Size: 6291456 bytes
-  if (12632064 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_18 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_18_data = (float*)(workspace + 12632064);
+  // Pool: pool_cudanode_fc8c25c6-bcfa-4f46-9115-2888f5834d8c:output, Offset: 0, Size: 6291456 bytes
+  float* intermediate_18_data = (float*)(workspace + 0);
   Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
-  // Pool: pool_cudanode_a49bf6ff-89cb-4e7b-9f38-50e5ac05be1f:output, Offset: 0, Size: 6291456 bytes
-  if (0 + 6291456 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_19 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_1357b64e-b6f1-4893-b35f-818888ea36c8:output, Offset: 0, Size: 6291456 bytes
   float* intermediate_19_data = (float*)(workspace + 0);
   Tensor<float> intermediate_19_tensor = {intermediate_19_data, intermediate_19_shape, 3};
-  // Pool: pool_cudanode_a13f36af-7c60-49da-9510-2c7c911e117d:output, Offset: 6291456, Size: 49152 bytes
-  if (6291456 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_20 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_20_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_b5cbb6e6-6330-4b6c-a929-5a9127adf582:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_20_data = (float*)(workspace + 0);
   Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 2};
-  // Pool: pool_cudanode_7ceb88d9-4549-437c-b7ad-9337da2de994:output, Offset: 6340608, Size: 49152 bytes
-  if (6340608 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_21 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_21_data = (float*)(workspace + 6340608);
+  // Pool: pool_cudanode_d0283c88-138d-436d-a7e2-75aa39fe615a:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_21_data = (float*)(workspace + 0);
   Tensor<float> intermediate_21_tensor = {intermediate_21_data, intermediate_21_shape, 2};
-  // Pool: pool_cudanode_e6670f7a-74ba-4b24-984e-9147076d3f0c:output, Offset: 6389760, Size: 49152 bytes
-  if (6389760 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_22 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_22_data = (float*)(workspace + 6389760);
+  // Pool: pool_cudanode_3a595fc3-360c-4cc8-b172-e106d7db6a66:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_22_data = (float*)(workspace + 0);
   Tensor<float> intermediate_22_tensor = {intermediate_22_data, intermediate_22_shape, 2};
-  // Pool: pool_cudanode_715ed22f-00ca-4e03-a6ec-79378a497b5a:output, Offset: 6438912, Size: 18874368 bytes
-  if (6438912 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_23 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_23_data = (float*)(workspace + 6438912);
+  // Pool: pool_cudanode_661dfbf8-ffa2-4bed-a566-3d42754d811c:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_23_data = (float*)(workspace + 0);
   Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 4};
-  // Pool: pool_cudanode_9e9318cf-02ba-4796-bc5d-8d48b54c586a:output, Offset: 25313280, Size: 18874368 bytes
-  if (25313280 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_24 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_24_data = (float*)(workspace + 25313280);
+  // Pool: pool_cudanode_6157bcc7-7617-4208-a1c1-4eea81de3391:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_24_data = (float*)(workspace + 0);
   Tensor<float> intermediate_24_tensor = {intermediate_24_data, intermediate_24_shape, 4};
-  // Pool: pool_cudanode_e900c553-7d1d-4ee4-854d-f4c97aa0cd33:output, Offset: 44187648, Size: 18874368 bytes
-  if (44187648 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_25 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_25_data = (float*)(workspace + 44187648);
+  // Pool: pool_cudanode_ffa276c9-2232-4460-b38f-51e58034d281:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_25_data = (float*)(workspace + 0);
   Tensor<float> intermediate_25_tensor = {intermediate_25_data, intermediate_25_shape, 4};
-  // Pool: pool_cudanode_5cdef2c7-51fb-459a-af5b-a85af766119b:output, Offset: 63062016, Size: 113246208 bytes
-  if (63062016 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_26 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_26_data = (float*)(workspace + 63062016);
+  // Pool: pool_cudanode_f382a5b5-6e6a-4dbf-852b-24e4766421ff:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_26_data = (float*)(workspace + 0);
   Tensor<float> intermediate_26_tensor = {intermediate_26_data, intermediate_26_shape, 4};
-  // Pool: pool_cudanode_373b2233-9935-4a38-9890-3f630581dcca:output, Offset: 176308224, Size: 113246208 bytes
-  if (176308224 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_27 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_27_data = (float*)(workspace + 176308224);
+  // Pool: pool_cudanode_505e13d0-ddfa-4559-ad8f-4b92b92c952d:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_27_data = (float*)(workspace + 0);
   Tensor<float> intermediate_27_tensor = {intermediate_27_data, intermediate_27_shape, 4};
-  // Pool: pool_cudanode_e286e53f-b768-4777-ab85-0b727ab7edfa:output, Offset: 6291456, Size: 18874368 bytes
-  if (6291456 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_28 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_28_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_022e55e2-b0a6-4909-9786-6681317df083:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_28_data = (float*)(workspace + 0);
   Tensor<float> intermediate_28_tensor = {intermediate_28_data, intermediate_28_shape, 4};
-  // Pool: pool_cudanode_5a41ad50-0861-43cb-903f-ceb38e44ef28:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_29 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_29_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_96615e9b-005d-4be4-9d5b-755455174162:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_29_data = (float*)(workspace + 0);
   Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 3};
-  // Pool: pool_cudanode_ea80482a-1fa3-40cd-90be-2250d9b94097:output, Offset: 6291456, Size: 18874368 bytes
-  if (6291456 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_30 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_30_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_2f89af46-cbc3-4389-9a2e-7b1433117e55:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_30_data = (float*)(workspace + 0);
   Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
-  // Pool: pool_cudanode_b32e67ff-8e37-4172-afaf-00f8cf57a147:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_31 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_31_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_96b9f715-985b-489f-be91-f17498b6f81e:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_31_data = (float*)(workspace + 0);
   Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
-  // Pool: pool_cudanode_26900a58-5fb4-4a54-9f00-d4057a496b95:output, Offset: 6291456, Size: 18874368 bytes
-  if (6291456 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_32 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_32_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_e5cfebed-ad1f-4d38-93e3-1f4d818f5e7f:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_32_data = (float*)(workspace + 0);
   Tensor<float> intermediate_32_tensor = {intermediate_32_data, intermediate_32_shape, 3};
-  // Pool: pool_cudanode_64864788-ea01-4ed1-8f9b-db171e039c40:output, Offset: 25165824, Size: 196608 bytes
-  if (25165824 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_33 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_33_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_2713e16d-e721-44be-bad3-b8aed4e8745b:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_33_data = (float*)(workspace + 0);
   Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
-  // Pool: pool_cudanode_111ce0ac-4630-49ea-b49f-b14d75cdb690:output, Offset: 25362432, Size: 196608 bytes
-  if (25362432 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_34 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_34_data = (float*)(workspace + 25362432);
+  // Pool: pool_cudanode_cde5e559-b5dc-44f9-9a82-d050391e002e:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_34_data = (float*)(workspace + 0);
   Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
-  // Pool: pool_cudanode_f08aa51a-cf5c-4ae6-b300-cdd604268222:output, Offset: 25165824, Size: 49152 bytes
-  if (25165824 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_35 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_35_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_3d521177-d03d-48e1-a4b6-47bc785957b8:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_35_data = (float*)(workspace + 0);
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  // Pool: pool_cudanode_036abdb0-baed-4ca9-9c80-9a42ca6b92f7:output, Offset: 25214976, Size: 18874368 bytes
-  if (25214976 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_36 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_36_data = (float*)(workspace + 25214976);
+  // Pool: pool_cudanode_37128aa3-0083-4a7c-8540-d7a824cc97a5:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_36_data = (float*)(workspace + 0);
   Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
-  // Pool: pool_cudanode_3c55afec-60d7-409a-838c-e5bbcb8d5f32:output, Offset: 6291456, Size: 18874368 bytes
-  if (6291456 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_37 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_37_data = (float*)(workspace + 6291456);
+  // Pool: pool_cudanode_87e61ea0-0b96-4d5a-9588-194e701f8ce1:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_37_data = (float*)(workspace + 0);
   Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 3};
-  // Pool: pool_cudanode_6d62e4b5-4d41-4b4f-bf7c-62c28b2dbb04:output, Offset: 0, Size: 49152 bytes
-  if (0 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_38 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_308dcb60-1d0d-4e86-9cfe-262a490047f9:output, Offset: 0, Size: 49152 bytes
   float* intermediate_38_data = (float*)(workspace + 0);
   Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 2};
-  // Pool: pool_cudanode_533078a5-333d-494d-8fd0-f8e2f2af0fd4:output, Offset: 49152, Size: 49152 bytes
-  if (49152 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_39 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_39_data = (float*)(workspace + 49152);
+  // Pool: pool_cudanode_19bea6f1-66eb-49ba-b1f3-9cbef7f2eeca:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_39_data = (float*)(workspace + 0);
   Tensor<float> intermediate_39_tensor = {intermediate_39_data, intermediate_39_shape, 2};
-  // Pool: pool_cudanode_007880ea-1f8e-489f-91cb-003066bc5dc0:output, Offset: 98304, Size: 49152 bytes
-  if (98304 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_40 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_40_data = (float*)(workspace + 98304);
+  // Pool: pool_cudanode_07d643c2-703d-45b0-812a-1feb46ae9589:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_40_data = (float*)(workspace + 0);
   Tensor<float> intermediate_40_tensor = {intermediate_40_data, intermediate_40_shape, 2};
-  // Pool: pool_cudanode_712fe230-eb58-43d9-9922-2c9d7222079b:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_41 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_41_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_4e07b533-c2c8-4cc7-8794-3ca920bab43e:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_41_data = (float*)(workspace + 0);
   Tensor<float> intermediate_41_tensor = {intermediate_41_data, intermediate_41_shape, 4};
-  // Pool: pool_cudanode_4c150749-85c4-410e-9920-309d51c1a102:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_42 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_42_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_3a42eb66-1b50-4f7e-94a4-efd850ad5a43:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_42_data = (float*)(workspace + 0);
   Tensor<float> intermediate_42_tensor = {intermediate_42_data, intermediate_42_shape, 4};
-  // Pool: pool_cudanode_a9ecefae-5273-44f0-abab-eccf88d770e9:output, Offset: 62914560, Size: 18874368 bytes
-  if (62914560 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_43 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_43_data = (float*)(workspace + 62914560);
+  // Pool: pool_cudanode_22be9f2b-e5f1-4fdb-8fd3-e215a4767311:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_43_data = (float*)(workspace + 0);
   Tensor<float> intermediate_43_tensor = {intermediate_43_data, intermediate_43_shape, 4};
-  // Pool: pool_cudanode_96b7f4f8-103d-41b1-ba04-adc06b3c3b8b:output, Offset: 81788928, Size: 113246208 bytes
-  if (81788928 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_44 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_44_data = (float*)(workspace + 81788928);
+  // Pool: pool_cudanode_c2e96b13-1cbc-437f-9e41-8b26fd9f9e1a:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_44_data = (float*)(workspace + 0);
   Tensor<float> intermediate_44_tensor = {intermediate_44_data, intermediate_44_shape, 4};
-  // Pool: pool_cudanode_09b2f7b6-1c24-41ad-8467-57291c1aabf9:output, Offset: 195035136, Size: 113246208 bytes
-  if (195035136 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_45 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_45_data = (float*)(workspace + 195035136);
+  // Pool: pool_cudanode_77c3fb79-5bf6-4459-bfba-a56b9ebf9229:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_45_data = (float*)(workspace + 0);
   Tensor<float> intermediate_45_tensor = {intermediate_45_data, intermediate_45_shape, 4};
-  // Pool: pool_cudanode_644a3aa8-3654-48d2-b243-da4da0f875bb:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_46 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_46_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_f627e2ae-506d-46b3-ad4a-c1eadf8d2d1b:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_46_data = (float*)(workspace + 0);
   Tensor<float> intermediate_46_tensor = {intermediate_46_data, intermediate_46_shape, 4};
-  // Pool: pool_cudanode_fcb2e2f9-8d1b-4c3a-8da4-26d6b54bbad9:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_47 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_47_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_9ac2ed87-8346-426b-a511-477cfa9c236a:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_47_data = (float*)(workspace + 0);
   Tensor<float> intermediate_47_tensor = {intermediate_47_data, intermediate_47_shape, 3};
-  // Pool: pool_cudanode_9525432d-4adb-42b5-b199-c65a467fa0ba:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_48 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_48_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_a52aac90-f444-4acf-8914-6460b0f005ac:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_48_data = (float*)(workspace + 0);
   Tensor<float> intermediate_48_tensor = {intermediate_48_data, intermediate_48_shape, 3};
-  // Pool: pool_cudanode_37f2d04e-4102-42b4-8863-2c90df1a241e:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_49 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_49_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_a50904de-28ad-481c-9ad5-8f0dc8d34ff4:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_49_data = (float*)(workspace + 0);
   Tensor<float> intermediate_49_tensor = {intermediate_49_data, intermediate_49_shape, 3};
-  // Pool: pool_cudanode_8d09316a-1c9b-4afa-8d44-2746cf0a90d7:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_50 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_50_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_efeb0c11-9e01-4232-b61e-9b830c542551:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_50_data = (float*)(workspace + 0);
   Tensor<float> intermediate_50_tensor = {intermediate_50_data, intermediate_50_shape, 3};
-  // Pool: pool_cudanode_ffa29795-b6bb-4557-b7dc-f302e7974050:output, Offset: 0, Size: 196608 bytes
-  if (0 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_51 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_8e283969-7ac9-4d85-93a5-a86acdbd1a74:output, Offset: 0, Size: 196608 bytes
   float* intermediate_51_data = (float*)(workspace + 0);
   Tensor<float> intermediate_51_tensor = {intermediate_51_data, intermediate_51_shape, 2};
-  // Pool: pool_cudanode_d369437c-d8d7-4556-8dbf-ca4516c865fd:output, Offset: 196608, Size: 196608 bytes
-  if (196608 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_52 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_52_data = (float*)(workspace + 196608);
+  // Pool: pool_cudanode_823284ec-2ee6-4ad6-8cbb-0092c9d706af:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_52_data = (float*)(workspace + 0);
   Tensor<float> intermediate_52_tensor = {intermediate_52_data, intermediate_52_shape, 2};
-  // Pool: pool_cudanode_9e8ecf46-c560-41b1-a6a5-b27e6e746e7c:output, Offset: 0, Size: 49152 bytes
-  if (0 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_53 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_f5075ed9-1752-41dc-9162-b826c6802827:output, Offset: 0, Size: 49152 bytes
   float* intermediate_53_data = (float*)(workspace + 0);
   Tensor<float> intermediate_53_tensor = {intermediate_53_data, intermediate_53_shape, 2};
-  // Pool: pool_cudanode_ef5f5af4-6f1e-418f-af09-28a45ff2a56e:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_54 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_54_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_eb042599-2ccd-4b3f-abc0-bddb2bc7dbc1:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_54_data = (float*)(workspace + 0);
   Tensor<float> intermediate_54_tensor = {intermediate_54_data, intermediate_54_shape, 3};
-  // Pool: pool_cudanode_0d51dcfa-d5f8-4fb5-aa15-afdcd27e49d0:output, Offset: 25165824, Size: 18874368 bytes
-  if (25165824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_55 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_55_data = (float*)(workspace + 25165824);
+  // Pool: pool_cudanode_8da58ce8-d8bf-414a-b922-737095b27fd3:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_55_data = (float*)(workspace + 0);
   Tensor<float> intermediate_55_tensor = {intermediate_55_data, intermediate_55_shape, 3};
-  // Pool: pool_cudanode_729d4efd-55aa-4cdf-863b-9a76d066d070:output, Offset: 0, Size: 49152 bytes
-  if (0 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_56 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_449f6569-c9c1-4b09-958d-717db92d91b2:output, Offset: 0, Size: 49152 bytes
   float* intermediate_56_data = (float*)(workspace + 0);
   Tensor<float> intermediate_56_tensor = {intermediate_56_data, intermediate_56_shape, 2};
-  // Pool: pool_cudanode_a9afd941-ea3c-45f9-96bb-83269c1a44a8:output, Offset: 49152, Size: 49152 bytes
-  if (49152 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_57 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_57_data = (float*)(workspace + 49152);
+  // Pool: pool_cudanode_2cbc7967-57a0-424b-a8bd-f806fd1fe951:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_57_data = (float*)(workspace + 0);
   Tensor<float> intermediate_57_tensor = {intermediate_57_data, intermediate_57_shape, 2};
-  // Pool: pool_cudanode_9caba94a-ad5d-48d3-83e9-079baa4573ec:output, Offset: 98304, Size: 49152 bytes
-  if (98304 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_58 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_58_data = (float*)(workspace + 98304);
+  // Pool: pool_cudanode_952bc192-88a4-4cf4-8c39-e982bececb2e:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_58_data = (float*)(workspace + 0);
   Tensor<float> intermediate_58_tensor = {intermediate_58_data, intermediate_58_shape, 2};
-  // Pool: pool_cudanode_8fab3b44-c22c-4493-8bd5-9f0df16be4f8:output, Offset: 147456, Size: 18874368 bytes
-  if (147456 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_59 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_59_data = (float*)(workspace + 147456);
+  // Pool: pool_cudanode_c5d644be-d96c-435d-b674-c8da4d24a4f6:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_59_data = (float*)(workspace + 0);
   Tensor<float> intermediate_59_tensor = {intermediate_59_data, intermediate_59_shape, 4};
-  // Pool: pool_cudanode_ac016f45-553c-4ff7-bb29-adcd3c755904:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_60 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_60_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_7d250140-b464-4e00-9531-1da3f9b93e27:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_60_data = (float*)(workspace + 0);
   Tensor<float> intermediate_60_tensor = {intermediate_60_data, intermediate_60_shape, 4};
-  // Pool: pool_cudanode_45de87fb-cc94-4b32-a36d-49b8fa3b3ca8:output, Offset: 62914560, Size: 18874368 bytes
-  if (62914560 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_61 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_61_data = (float*)(workspace + 62914560);
+  // Pool: pool_cudanode_da7c2353-043d-4f65-9c19-df4b3b5bf3c3:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_61_data = (float*)(workspace + 0);
   Tensor<float> intermediate_61_tensor = {intermediate_61_data, intermediate_61_shape, 4};
-  // Pool: pool_cudanode_2bfc85c7-88f1-41d6-80b8-b0c232f5aad9:output, Offset: 81788928, Size: 113246208 bytes
-  if (81788928 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_62 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_62_data = (float*)(workspace + 81788928);
+  // Pool: pool_cudanode_7418ba0b-dd04-4ef7-988d-cd496e6bd545:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_62_data = (float*)(workspace + 0);
   Tensor<float> intermediate_62_tensor = {intermediate_62_data, intermediate_62_shape, 4};
-  // Pool: pool_cudanode_12088688-9186-4f11-8b46-caf6a78ba9f0:output, Offset: 195035136, Size: 113246208 bytes
-  if (195035136 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_63 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_63_data = (float*)(workspace + 195035136);
+  // Pool: pool_cudanode_2d175044-c2bf-4598-be33-a6c6782f8bf9:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_63_data = (float*)(workspace + 0);
   Tensor<float> intermediate_63_tensor = {intermediate_63_data, intermediate_63_shape, 4};
-  // Pool: pool_cudanode_a4ace996-8145-484d-a07c-a0ce6daaa172:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_64 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_1b73fb15-dbae-44f0-9e6a-a0816487d638:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_64_data = (float*)(workspace + 0);
   Tensor<float> intermediate_64_tensor = {intermediate_64_data, intermediate_64_shape, 4};
-  // Pool: pool_cudanode_f5cfad2a-1e9b-44d3-9e39-765b5301f9bf:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_65 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_65_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_a9123fca-f415-46b0-9efc-68ffba3a7511:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_65_data = (float*)(workspace + 0);
   Tensor<float> intermediate_65_tensor = {intermediate_65_data, intermediate_65_shape, 3};
-  // Pool: pool_cudanode_7595a36a-892e-4f63-ac3a-d1ca8c874851:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_66 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_8953a23a-575c-4d0c-a464-b333dd9fd632:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_66_data = (float*)(workspace + 0);
   Tensor<float> intermediate_66_tensor = {intermediate_66_data, intermediate_66_shape, 3};
-  // Pool: pool_cudanode_b6aa5595-22d2-44f6-9c42-d0d4270435f1:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_67 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_67_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_e64a7760-17b3-47c4-b513-ade9ee20a680:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_67_data = (float*)(workspace + 0);
   Tensor<float> intermediate_67_tensor = {intermediate_67_data, intermediate_67_shape, 3};
-  // Pool: pool_cudanode_4006090b-cd5c-45af-a178-77e6b69dcf0f:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_68 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_59202cf9-5dca-4dec-b8d3-e0162fdd584c:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_68_data = (float*)(workspace + 0);
   Tensor<float> intermediate_68_tensor = {intermediate_68_data, intermediate_68_shape, 3};
-  // Pool: pool_cudanode_26b4fe59-fd7c-41ce-88b2-d611c9e26460:output, Offset: 18874368, Size: 196608 bytes
-  if (18874368 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_69 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_69_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_45806719-1bb4-45d3-8760-9ba6b9fa75ce:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_69_data = (float*)(workspace + 0);
   Tensor<float> intermediate_69_tensor = {intermediate_69_data, intermediate_69_shape, 2};
-  // Pool: pool_cudanode_2a6a1491-7bb9-43a8-bbec-abba1c565bc0:output, Offset: 19070976, Size: 196608 bytes
-  if (19070976 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_70 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_70_data = (float*)(workspace + 19070976);
+  // Pool: pool_cudanode_d2ba4d05-6a4d-4d80-afe2-2453b872c373:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_70_data = (float*)(workspace + 0);
   Tensor<float> intermediate_70_tensor = {intermediate_70_data, intermediate_70_shape, 2};
-  // Pool: pool_cudanode_06ed4c96-d204-496e-8494-5d4dc4788600:output, Offset: 18874368, Size: 49152 bytes
-  if (18874368 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_71 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_71_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_9d0ac973-92a5-48b0-83cc-6d698b6aef3e:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_71_data = (float*)(workspace + 0);
   Tensor<float> intermediate_71_tensor = {intermediate_71_data, intermediate_71_shape, 2};
-  // Pool: pool_cudanode_2a31d8fc-0584-4764-8e63-d39decad024a:output, Offset: 44040192, Size: 18874368 bytes
-  if (44040192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_72 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_72_data = (float*)(workspace + 44040192);
+  // Pool: pool_cudanode_5ec4de22-7c49-4459-a2c7-5fa49e8b9267:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_72_data = (float*)(workspace + 0);
   Tensor<float> intermediate_72_tensor = {intermediate_72_data, intermediate_72_shape, 3};
-  // Pool: pool_cudanode_d15f9588-5e81-4f91-9da8-c540f1a07580:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_73 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_d62e7739-d497-4bf2-84a6-7f7bf6d047d4:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_73_data = (float*)(workspace + 0);
   Tensor<float> intermediate_73_tensor = {intermediate_73_data, intermediate_73_shape, 3};
-  // Pool: pool_cudanode_bf6a1da3-ea59-4c09-8ad3-180c404e172e:output, Offset: 18874368, Size: 49152 bytes
-  if (18874368 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_74 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_74_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_f64c7082-9b94-4110-94a5-e1788c387d94:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_74_data = (float*)(workspace + 0);
   Tensor<float> intermediate_74_tensor = {intermediate_74_data, intermediate_74_shape, 2};
-  // Pool: pool_cudanode_819a9792-bfb6-430d-a75d-7d1c5d03c201:output, Offset: 18923520, Size: 49152 bytes
-  if (18923520 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_75 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_75_data = (float*)(workspace + 18923520);
+  // Pool: pool_cudanode_0da69d1c-b8b1-4846-ae0a-29b1063331bb:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_75_data = (float*)(workspace + 0);
   Tensor<float> intermediate_75_tensor = {intermediate_75_data, intermediate_75_shape, 2};
-  // Pool: pool_cudanode_fee42ae7-470a-45b8-92e0-a079a58283b6:output, Offset: 18972672, Size: 49152 bytes
-  if (18972672 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_76 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_76_data = (float*)(workspace + 18972672);
+  // Pool: pool_cudanode_163dc196-3684-4daf-bdf0-310809305f1d:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_76_data = (float*)(workspace + 0);
   Tensor<float> intermediate_76_tensor = {intermediate_76_data, intermediate_76_shape, 2};
-  // Pool: pool_cudanode_91cb39cf-f655-4a1c-8fe4-a1618f5204d5:output, Offset: 19021824, Size: 18874368 bytes
-  if (19021824 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_77 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_77_data = (float*)(workspace + 19021824);
+  // Pool: pool_cudanode_414d0dfc-4053-4aa9-a9f1-c67622729d96:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_77_data = (float*)(workspace + 0);
   Tensor<float> intermediate_77_tensor = {intermediate_77_data, intermediate_77_shape, 4};
-  // Pool: pool_cudanode_d5cd89ee-453b-4b82-a0bb-94e518267dea:output, Offset: 37896192, Size: 18874368 bytes
-  if (37896192 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_78 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_78_data = (float*)(workspace + 37896192);
+  // Pool: pool_cudanode_6dba944e-e42f-4d74-bea3-a2d70622c1aa:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_78_data = (float*)(workspace + 0);
   Tensor<float> intermediate_78_tensor = {intermediate_78_data, intermediate_78_shape, 4};
-  // Pool: pool_cudanode_9397b645-781f-46ca-8ace-00cc1d616451:output, Offset: 56770560, Size: 18874368 bytes
-  if (56770560 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_79 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_79_data = (float*)(workspace + 56770560);
+  // Pool: pool_cudanode_742c9ed1-8d27-44de-8ca7-efdde9b3b09f:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_79_data = (float*)(workspace + 0);
   Tensor<float> intermediate_79_tensor = {intermediate_79_data, intermediate_79_shape, 4};
-  // Pool: pool_cudanode_e53290e3-5411-47ca-b3a0-f18f7bbde595:output, Offset: 75644928, Size: 113246208 bytes
-  if (75644928 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_80 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_80_data = (float*)(workspace + 75644928);
+  // Pool: pool_cudanode_067a9a0e-a474-48bf-bccd-6899be863d62:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_80_data = (float*)(workspace + 0);
   Tensor<float> intermediate_80_tensor = {intermediate_80_data, intermediate_80_shape, 4};
-  // Pool: pool_cudanode_2666408f-84f2-4f0a-b7a2-519b6a122091:output, Offset: 188891136, Size: 113246208 bytes
-  if (188891136 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_81 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_81_data = (float*)(workspace + 188891136);
+  // Pool: pool_cudanode_4ef13902-813e-42e6-a490-3a596a0277b9:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_81_data = (float*)(workspace + 0);
   Tensor<float> intermediate_81_tensor = {intermediate_81_data, intermediate_81_shape, 4};
-  // Pool: pool_cudanode_3b23867d-5a52-4ddf-8ff8-b06754a5fe33:output, Offset: 18874368, Size: 18874368 bytes
-  if (18874368 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_82 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_82_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_e8e9f2fe-6fd4-4040-afd9-db7b44344023:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_82_data = (float*)(workspace + 0);
   Tensor<float> intermediate_82_tensor = {intermediate_82_data, intermediate_82_shape, 4};
-  // Pool: pool_cudanode_007c1c27-f60b-4d9e-9aa8-b6e21e4e4b71:output, Offset: 37748736, Size: 18874368 bytes
-  if (37748736 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_83 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_83_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_364c35cf-f940-443a-8565-cc5584f092d3:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_83_data = (float*)(workspace + 0);
   Tensor<float> intermediate_83_tensor = {intermediate_83_data, intermediate_83_shape, 3};
-  // Pool: pool_cudanode_6e222449-dd85-440e-8149-290bc40ad4cd:output, Offset: 18874368, Size: 18874368 bytes
-  if (18874368 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_84 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_84_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_6ea43983-3680-4de8-8f03-a97666395946:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_84_data = (float*)(workspace + 0);
   Tensor<float> intermediate_84_tensor = {intermediate_84_data, intermediate_84_shape, 3};
-  // Pool: pool_cudanode_4b76ed18-ae84-4ed5-84ad-2f54bb10c3ef:output, Offset: 37748736, Size: 18874368 bytes
-  if (37748736 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_85 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_85_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_d2733e78-d926-42da-bbc2-534b00f36312:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_85_data = (float*)(workspace + 0);
   Tensor<float> intermediate_85_tensor = {intermediate_85_data, intermediate_85_shape, 3};
-  // Pool: pool_cudanode_eb1c672f-afa7-4146-80b5-87b9b24f23e8:output, Offset: 18874368, Size: 18874368 bytes
-  if (18874368 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_86 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_86_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_abcbd723-5bda-4523-a1d3-dea402635d58:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_86_data = (float*)(workspace + 0);
   Tensor<float> intermediate_86_tensor = {intermediate_86_data, intermediate_86_shape, 3};
-  // Pool: pool_cudanode_4513721f-ecfc-4d98-bc38-312e8f7855fc:output, Offset: 37748736, Size: 196608 bytes
-  if (37748736 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_87 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_87_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_efd105ad-1dae-435e-a8bf-0a952e8ceee7:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_87_data = (float*)(workspace + 0);
   Tensor<float> intermediate_87_tensor = {intermediate_87_data, intermediate_87_shape, 2};
-  // Pool: pool_cudanode_cd32ca3b-fb0e-4ac0-94ec-302f9a8e2420:output, Offset: 37945344, Size: 196608 bytes
-  if (37945344 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_88 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_88_data = (float*)(workspace + 37945344);
+  // Pool: pool_cudanode_784810a7-eebe-433c-9f79-ce36d91aaa6f:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_88_data = (float*)(workspace + 0);
   Tensor<float> intermediate_88_tensor = {intermediate_88_data, intermediate_88_shape, 2};
-  // Pool: pool_cudanode_0995a83a-ef44-408c-a19b-cca2ca5fc7b3:output, Offset: 37748736, Size: 49152 bytes
-  if (37748736 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_89 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_89_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_98cc4a99-49ff-4fe4-854f-26d182e33888:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_89_data = (float*)(workspace + 0);
   Tensor<float> intermediate_89_tensor = {intermediate_89_data, intermediate_89_shape, 2};
-  // Pool: pool_cudanode_74986e54-65d8-470b-8f71-c639dbf452d4:output, Offset: 37797888, Size: 18874368 bytes
-  if (37797888 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_90 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_90_data = (float*)(workspace + 37797888);
+  // Pool: pool_cudanode_b02d9727-bb6f-44c4-8a41-6b0802c9bf7a:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_90_data = (float*)(workspace + 0);
   Tensor<float> intermediate_90_tensor = {intermediate_90_data, intermediate_90_shape, 3};
-  // Pool: pool_cudanode_2899bbf3-598c-4e08-ac51-97281d2e5eb3:output, Offset: 18874368, Size: 18874368 bytes
-  if (18874368 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_91 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_91_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_b5cc4259-f48b-4ff3-8a00-fd67bd5d43f8:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_91_data = (float*)(workspace + 0);
   Tensor<float> intermediate_91_tensor = {intermediate_91_data, intermediate_91_shape, 3};
-  // Pool: pool_cudanode_b39f544e-91c1-4199-9d4e-8757ecc86595:output, Offset: 0, Size: 49152 bytes
-  if (0 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_92 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_93903b43-0242-4fe4-89b1-33d09024b4ca:output, Offset: 0, Size: 49152 bytes
   float* intermediate_92_data = (float*)(workspace + 0);
   Tensor<float> intermediate_92_tensor = {intermediate_92_data, intermediate_92_shape, 2};
-  // Pool: pool_cudanode_4aa56f51-2879-4cc7-a6a9-cf90594902be:output, Offset: 49152, Size: 49152 bytes
-  if (49152 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_93 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_93_data = (float*)(workspace + 49152);
+  // Pool: pool_cudanode_b8a1bb60-e3fa-42e8-94f8-99e757f18703:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_93_data = (float*)(workspace + 0);
   Tensor<float> intermediate_93_tensor = {intermediate_93_data, intermediate_93_shape, 2};
-  // Pool: pool_cudanode_7c01dc08-adcf-4aa1-a332-b7c6a3360e24:output, Offset: 98304, Size: 49152 bytes
-  if (98304 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_94 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_94_data = (float*)(workspace + 98304);
+  // Pool: pool_cudanode_82108f16-26a6-4285-852d-09742de99bb9:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_94_data = (float*)(workspace + 0);
   Tensor<float> intermediate_94_tensor = {intermediate_94_data, intermediate_94_shape, 2};
-  // Pool: pool_cudanode_4f551eeb-0779-454e-b753-be15453832f8:output, Offset: 37748736, Size: 18874368 bytes
-  if (37748736 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_95 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_95_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_96acce8f-1195-4e16-9b50-fe4033482325:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_95_data = (float*)(workspace + 0);
   Tensor<float> intermediate_95_tensor = {intermediate_95_data, intermediate_95_shape, 4};
-  // Pool: pool_cudanode_6365a618-2b4d-4537-a0fb-d4cd68ce9a33:output, Offset: 56623104, Size: 18874368 bytes
-  if (56623104 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_96 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_96_data = (float*)(workspace + 56623104);
+  // Pool: pool_cudanode_3114b9ff-ad2c-4101-81a5-91cecaaf9efc:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_96_data = (float*)(workspace + 0);
   Tensor<float> intermediate_96_tensor = {intermediate_96_data, intermediate_96_shape, 4};
-  // Pool: pool_cudanode_05dbdf76-11ed-4c31-b4ab-04bb37ece482:output, Offset: 75497472, Size: 18874368 bytes
-  if (75497472 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_97 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_97_data = (float*)(workspace + 75497472);
+  // Pool: pool_cudanode_814ba9cc-25b7-4d42-a042-37012b5ce8e5:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_97_data = (float*)(workspace + 0);
   Tensor<float> intermediate_97_tensor = {intermediate_97_data, intermediate_97_shape, 4};
-  // Pool: pool_cudanode_40a99402-778e-4e07-9ca4-5ef568991a18:output, Offset: 94371840, Size: 113246208 bytes
-  if (94371840 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_98 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_98_data = (float*)(workspace + 94371840);
+  // Pool: pool_cudanode_d8f852ff-63ee-4f54-9552-45c4cc2cc7a6:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_98_data = (float*)(workspace + 0);
   Tensor<float> intermediate_98_tensor = {intermediate_98_data, intermediate_98_shape, 4};
-  // Pool: pool_cudanode_8c7131e3-a5f9-43ce-976d-ea66748d4aa8:output, Offset: 207618048, Size: 113246208 bytes
-  if (207618048 + 113246208 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_99 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_99_data = (float*)(workspace + 207618048);
+  // Pool: pool_cudanode_b9abd941-994b-4ded-b830-85748fac0f53:output, Offset: 0, Size: 113246208 bytes
+  float* intermediate_99_data = (float*)(workspace + 0);
   Tensor<float> intermediate_99_tensor = {intermediate_99_data, intermediate_99_shape, 4};
-  // Pool: pool_cudanode_0dc2a071-4939-4dfd-af1c-186d54fc7d7e:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_100 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_759d97ec-06a6-4142-b135-b116b42d8bd9:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_100_data = (float*)(workspace + 0);
   Tensor<float> intermediate_100_tensor = {intermediate_100_data, intermediate_100_shape, 4};
-  // Pool: pool_cudanode_1ad4e7e7-11b4-4da8-93f9-9016c32137b7:output, Offset: 37748736, Size: 18874368 bytes
-  if (37748736 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_101 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_101_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_296d7998-b1b4-439e-96a0-b37eea40c211:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_101_data = (float*)(workspace + 0);
   Tensor<float> intermediate_101_tensor = {intermediate_101_data, intermediate_101_shape, 3};
-  // Pool: pool_cudanode_55971e5d-749d-40cc-95d8-daddda9fe151:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_102 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_a2847533-292c-440a-b635-21f16cd0735a:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_102_data = (float*)(workspace + 0);
   Tensor<float> intermediate_102_tensor = {intermediate_102_data, intermediate_102_shape, 3};
-  // Pool: pool_cudanode_60edca54-ebf6-4e7b-b425-e5e65f255193:output, Offset: 37748736, Size: 18874368 bytes
-  if (37748736 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_103 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_103_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_01bfe52b-e96b-4f61-bd7e-3799efe81dcf:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_103_data = (float*)(workspace + 0);
   Tensor<float> intermediate_103_tensor = {intermediate_103_data, intermediate_103_shape, 3};
-  // Pool: pool_cudanode_f273b899-e6e3-4f30-9312-0fe8a70f1ee3:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_104 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_b2f11f38-21f1-4d52-b3d7-61ed77ddc686:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_104_data = (float*)(workspace + 0);
   Tensor<float> intermediate_104_tensor = {intermediate_104_data, intermediate_104_shape, 3};
-  // Pool: pool_cudanode_19f595d7-3985-4a36-a608-a09d9d66c38e:output, Offset: 37748736, Size: 196608 bytes
-  if (37748736 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_105 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_105_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_f804dd2b-2b3b-4943-a925-5252a6cf6d21:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_105_data = (float*)(workspace + 0);
   Tensor<float> intermediate_105_tensor = {intermediate_105_data, intermediate_105_shape, 2};
-  // Pool: pool_cudanode_1776b38c-d254-4166-8cbd-2f11e35d184a:output, Offset: 37945344, Size: 196608 bytes
-  if (37945344 + 196608 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_106 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_106_data = (float*)(workspace + 37945344);
+  // Pool: pool_cudanode_271b000a-e5cd-4871-a57a-735e06bef781:output, Offset: 0, Size: 196608 bytes
+  float* intermediate_106_data = (float*)(workspace + 0);
   Tensor<float> intermediate_106_tensor = {intermediate_106_data, intermediate_106_shape, 2};
-  // Pool: pool_cudanode_b99d2583-1022-4d41-a3a5-e4e31ebbba50:output, Offset: 37748736, Size: 49152 bytes
-  if (37748736 + 49152 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_107 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_107_data = (float*)(workspace + 37748736);
+  // Pool: pool_cudanode_8b707b7c-7c49-4197-a0de-4771676897d3:output, Offset: 0, Size: 49152 bytes
+  float* intermediate_107_data = (float*)(workspace + 0);
   Tensor<float> intermediate_107_tensor = {intermediate_107_data, intermediate_107_shape, 2};
-  // Pool: pool_cudanode_29b81638-d4df-43b9-a067-c6f6e44ee929:output, Offset: 37797888, Size: 18874368 bytes
-  if (37797888 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_108 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_108_data = (float*)(workspace + 37797888);
+  // Pool: pool_cudanode_62d54874-cbf7-4a73-8932-e8844271c9e6:output, Offset: 0, Size: 18874368 bytes
+  float* intermediate_108_data = (float*)(workspace + 0);
   Tensor<float> intermediate_108_tensor = {intermediate_108_data, intermediate_108_shape, 3};
-  // Pool: pool_cudanode_c6b61f55-177f-4ee9-b9bb-be0a53be4af9:output, Offset: 0, Size: 18874368 bytes
-  if (0 + 18874368 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_109 allocation would exceed workspace bounds\n");
-    return;
-  }
+  // Pool: pool_cudanode_d490559a-242f-4307-95f8-70a1fdad5b6e:output, Offset: 0, Size: 18874368 bytes
   float* intermediate_109_data = (float*)(workspace + 0);
   Tensor<float> intermediate_109_tensor = {intermediate_109_data, intermediate_109_shape, 3};
-  // Pool: pool_cudanode_c7897e3b-8e62-4b2a-91a9-6a88c9758f38:output, Offset: 18874368, Size: 8320 bytes
-  if (18874368 + 8320 > workspace_size) {
-    fprintf(stderr, "Error: Tensor intermediate_110 allocation would exceed workspace bounds\n");
-    return;
-  }
-  float* intermediate_110_data = (float*)(workspace + 18874368);
+  // Pool: pool_cudanode_b64bae3c-eca7-4f26-aa6a-e3f1112306ff:output, Offset: 0, Size: 8320 bytes
+  float* intermediate_110_data = (float*)(workspace + 0);
   Tensor<float> intermediate_110_tensor = {intermediate_110_data, intermediate_110_shape, 2};
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
-  Tensor<float> output = {output_data, output_shape, output_dims};
-  Tensor<float> param_0_embeddings = {param_0_embeddings_data, param_0_embeddings_shape, param_0_embeddings_dims};
-  Tensor<float> param_1_frequencies = {param_1_frequencies_data, param_1_frequencies_shape, param_1_frequencies_dims};
-  Tensor<float> param_2_weights = {param_2_weights_data, param_2_weights_shape, param_2_weights_dims};
-  Tensor<float> param_3_bias = {param_3_bias_data, param_3_bias_shape, param_3_bias_dims};
-  Tensor<float> param_4_weights = {param_4_weights_data, param_4_weights_shape, param_4_weights_dims};
-  Tensor<float> param_5_bias = {param_5_bias_data, param_5_bias_shape, param_5_bias_dims};
-  Tensor<float> param_6_weights = {param_6_weights_data, param_6_weights_shape, param_6_weights_dims};
-  Tensor<float> param_7_bias = {param_7_bias_data, param_7_bias_shape, param_7_bias_dims};
-  Tensor<float> param_8_weights = {param_8_weights_data, param_8_weights_shape, param_8_weights_dims};
-  Tensor<float> param_9_bias = {param_9_bias_data, param_9_bias_shape, param_9_bias_dims};
-  Tensor<float> param_10_gamma = {param_10_gamma_data, param_10_gamma_shape, param_10_gamma_dims};
-  Tensor<float> param_11_beta = {param_11_beta_data, param_11_beta_shape, param_11_beta_dims};
-  Tensor<float> param_12_weights = {param_12_weights_data, param_12_weights_shape, param_12_weights_dims};
-  Tensor<float> param_13_bias = {param_13_bias_data, param_13_bias_shape, param_13_bias_dims};
-  Tensor<float> param_14_weights = {param_14_weights_data, param_14_weights_shape, param_14_weights_dims};
-  Tensor<float> param_15_bias = {param_15_bias_data, param_15_bias_shape, param_15_bias_dims};
-  Tensor<float> param_16_gamma = {param_16_gamma_data, param_16_gamma_shape, param_16_gamma_dims};
-  Tensor<float> param_17_beta = {param_17_beta_data, param_17_beta_shape, param_17_beta_dims};
-  Tensor<float> param_18_weights = {param_18_weights_data, param_18_weights_shape, param_18_weights_dims};
-  Tensor<float> param_19_bias = {param_19_bias_data, param_19_bias_shape, param_19_bias_dims};
-  Tensor<float> param_20_weights = {param_20_weights_data, param_20_weights_shape, param_20_weights_dims};
-  Tensor<float> param_21_bias = {param_21_bias_data, param_21_bias_shape, param_21_bias_dims};
-  Tensor<float> param_22_weights = {param_22_weights_data, param_22_weights_shape, param_22_weights_dims};
-  Tensor<float> param_23_bias = {param_23_bias_data, param_23_bias_shape, param_23_bias_dims};
-  Tensor<float> param_24_weights = {param_24_weights_data, param_24_weights_shape, param_24_weights_dims};
-  Tensor<float> param_25_bias = {param_25_bias_data, param_25_bias_shape, param_25_bias_dims};
-  Tensor<float> param_26_gamma = {param_26_gamma_data, param_26_gamma_shape, param_26_gamma_dims};
-  Tensor<float> param_27_beta = {param_27_beta_data, param_27_beta_shape, param_27_beta_dims};
-  Tensor<float> param_28_weights = {param_28_weights_data, param_28_weights_shape, param_28_weights_dims};
-  Tensor<float> param_29_bias = {param_29_bias_data, param_29_bias_shape, param_29_bias_dims};
-  Tensor<float> param_30_weights = {param_30_weights_data, param_30_weights_shape, param_30_weights_dims};
-  Tensor<float> param_31_bias = {param_31_bias_data, param_31_bias_shape, param_31_bias_dims};
-  Tensor<float> param_32_gamma = {param_32_gamma_data, param_32_gamma_shape, param_32_gamma_dims};
-  Tensor<float> param_33_beta = {param_33_beta_data, param_33_beta_shape, param_33_beta_dims};
-  Tensor<float> param_34_weights = {param_34_weights_data, param_34_weights_shape, param_34_weights_dims};
-  Tensor<float> param_35_bias = {param_35_bias_data, param_35_bias_shape, param_35_bias_dims};
-  Tensor<float> param_36_weights = {param_36_weights_data, param_36_weights_shape, param_36_weights_dims};
-  Tensor<float> param_37_bias = {param_37_bias_data, param_37_bias_shape, param_37_bias_dims};
-  Tensor<float> param_38_weights = {param_38_weights_data, param_38_weights_shape, param_38_weights_dims};
-  Tensor<float> param_39_bias = {param_39_bias_data, param_39_bias_shape, param_39_bias_dims};
-  Tensor<float> param_40_weights = {param_40_weights_data, param_40_weights_shape, param_40_weights_dims};
-  Tensor<float> param_41_bias = {param_41_bias_data, param_41_bias_shape, param_41_bias_dims};
-  Tensor<float> param_42_gamma = {param_42_gamma_data, param_42_gamma_shape, param_42_gamma_dims};
-  Tensor<float> param_43_beta = {param_43_beta_data, param_43_beta_shape, param_43_beta_dims};
-  Tensor<float> param_44_weights = {param_44_weights_data, param_44_weights_shape, param_44_weights_dims};
-  Tensor<float> param_45_bias = {param_45_bias_data, param_45_bias_shape, param_45_bias_dims};
-  Tensor<float> param_46_weights = {param_46_weights_data, param_46_weights_shape, param_46_weights_dims};
-  Tensor<float> param_47_bias = {param_47_bias_data, param_47_bias_shape, param_47_bias_dims};
-  Tensor<float> param_48_gamma = {param_48_gamma_data, param_48_gamma_shape, param_48_gamma_dims};
-  Tensor<float> param_49_beta = {param_49_beta_data, param_49_beta_shape, param_49_beta_dims};
-  Tensor<float> param_50_weights = {param_50_weights_data, param_50_weights_shape, param_50_weights_dims};
-  Tensor<float> param_51_bias = {param_51_bias_data, param_51_bias_shape, param_51_bias_dims};
-  Tensor<float> param_52_weights = {param_52_weights_data, param_52_weights_shape, param_52_weights_dims};
-  Tensor<float> param_53_bias = {param_53_bias_data, param_53_bias_shape, param_53_bias_dims};
-  Tensor<float> param_54_weights = {param_54_weights_data, param_54_weights_shape, param_54_weights_dims};
-  Tensor<float> param_55_bias = {param_55_bias_data, param_55_bias_shape, param_55_bias_dims};
-  Tensor<float> param_56_weights = {param_56_weights_data, param_56_weights_shape, param_56_weights_dims};
-  Tensor<float> param_57_bias = {param_57_bias_data, param_57_bias_shape, param_57_bias_dims};
-  Tensor<float> param_58_gamma = {param_58_gamma_data, param_58_gamma_shape, param_58_gamma_dims};
-  Tensor<float> param_59_beta = {param_59_beta_data, param_59_beta_shape, param_59_beta_dims};
-  Tensor<float> param_60_weights = {param_60_weights_data, param_60_weights_shape, param_60_weights_dims};
-  Tensor<float> param_61_bias = {param_61_bias_data, param_61_bias_shape, param_61_bias_dims};
-  Tensor<float> param_62_weights = {param_62_weights_data, param_62_weights_shape, param_62_weights_dims};
-  Tensor<float> param_63_bias = {param_63_bias_data, param_63_bias_shape, param_63_bias_dims};
-  Tensor<float> param_64_gamma = {param_64_gamma_data, param_64_gamma_shape, param_64_gamma_dims};
-  Tensor<float> param_65_beta = {param_65_beta_data, param_65_beta_shape, param_65_beta_dims};
-  Tensor<float> param_66_weights = {param_66_weights_data, param_66_weights_shape, param_66_weights_dims};
-  Tensor<float> param_67_bias = {param_67_bias_data, param_67_bias_shape, param_67_bias_dims};
-  Tensor<float> param_68_weights = {param_68_weights_data, param_68_weights_shape, param_68_weights_dims};
-  Tensor<float> param_69_bias = {param_69_bias_data, param_69_bias_shape, param_69_bias_dims};
-  Tensor<float> param_70_weights = {param_70_weights_data, param_70_weights_shape, param_70_weights_dims};
-  Tensor<float> param_71_bias = {param_71_bias_data, param_71_bias_shape, param_71_bias_dims};
-  Tensor<float> param_72_weights = {param_72_weights_data, param_72_weights_shape, param_72_weights_dims};
-  Tensor<float> param_73_bias = {param_73_bias_data, param_73_bias_shape, param_73_bias_dims};
-  Tensor<float> param_74_gamma = {param_74_gamma_data, param_74_gamma_shape, param_74_gamma_dims};
-  Tensor<float> param_75_beta = {param_75_beta_data, param_75_beta_shape, param_75_beta_dims};
-  Tensor<float> param_76_weights = {param_76_weights_data, param_76_weights_shape, param_76_weights_dims};
-  Tensor<float> param_77_bias = {param_77_bias_data, param_77_bias_shape, param_77_bias_dims};
-  Tensor<float> param_78_weights = {param_78_weights_data, param_78_weights_shape, param_78_weights_dims};
-  Tensor<float> param_79_bias = {param_79_bias_data, param_79_bias_shape, param_79_bias_dims};
-  Tensor<float> param_80_gamma = {param_80_gamma_data, param_80_gamma_shape, param_80_gamma_dims};
-  Tensor<float> param_81_beta = {param_81_beta_data, param_81_beta_shape, param_81_beta_dims};
-  Tensor<float> param_82_weights = {param_82_weights_data, param_82_weights_shape, param_82_weights_dims};
-  Tensor<float> param_83_bias = {param_83_bias_data, param_83_bias_shape, param_83_bias_dims};
-  Tensor<float> param_84_weights = {param_84_weights_data, param_84_weights_shape, param_84_weights_dims};
-  Tensor<float> param_85_bias = {param_85_bias_data, param_85_bias_shape, param_85_bias_dims};
-  Tensor<float> param_86_weights = {param_86_weights_data, param_86_weights_shape, param_86_weights_dims};
-  Tensor<float> param_87_bias = {param_87_bias_data, param_87_bias_shape, param_87_bias_dims};
-  Tensor<float> param_88_weights = {param_88_weights_data, param_88_weights_shape, param_88_weights_dims};
-  Tensor<float> param_89_bias = {param_89_bias_data, param_89_bias_shape, param_89_bias_dims};
-  Tensor<float> param_90_gamma = {param_90_gamma_data, param_90_gamma_shape, param_90_gamma_dims};
-  Tensor<float> param_91_beta = {param_91_beta_data, param_91_beta_shape, param_91_beta_dims};
-  Tensor<float> param_92_weights = {param_92_weights_data, param_92_weights_shape, param_92_weights_dims};
-  Tensor<float> param_93_bias = {param_93_bias_data, param_93_bias_shape, param_93_bias_dims};
-  Tensor<float> param_94_weights = {param_94_weights_data, param_94_weights_shape, param_94_weights_dims};
-  Tensor<float> param_95_bias = {param_95_bias_data, param_95_bias_shape, param_95_bias_dims};
-  Tensor<float> param_96_gamma = {param_96_gamma_data, param_96_gamma_shape, param_96_gamma_dims};
-  Tensor<float> param_97_beta = {param_97_beta_data, param_97_beta_shape, param_97_beta_dims};
-  Tensor<float> param_98_weights = {param_98_weights_data, param_98_weights_shape, param_98_weights_dims};
-  Tensor<float> param_99_bias = {param_99_bias_data, param_99_bias_shape, param_99_bias_dims};
+  Tensor<float> output = {(float*)output_data, output_shape, output_dims};
 
- // --- Kernel Launch Sequence ---
-  embedding_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>(intermediate_0_tensor, input, param_0_embeddings);
+    // --- Kernel Launch Sequence ---
+  embedding_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>(embedding_forward(intermediate_0_tensor, input, param_tensors[0]););
   CUDA_CHECK(cudaGetLastError());
-  positional_encoding_forward<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(intermediate_1_tensor, intermediate_0_tensor, param_1_frequencies);
+  positional_encoding_forward<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(positional_encoding_forward(intermediate_1_tensor, intermediate_0_tensor, param_tensors[1]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(intermediate_2_tensor, intermediate_1_tensor, param_2_weights, param_3_bias);
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_2_tensor, intermediate_1_tensor, param_tensors[2], param_tensors[3]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(intermediate_3_tensor, intermediate_1_tensor, param_4_weights, param_5_bias);
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_3_tensor, intermediate_1_tensor, param_tensors[4], param_tensors[5]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(intermediate_4_tensor, intermediate_1_tensor, param_6_weights, param_7_bias);
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_4_tensor, intermediate_1_tensor, param_tensors[6], param_tensors[7]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(intermediate_5_tensor, intermediate_2_tensor);
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_5_tensor, intermediate_2_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(intermediate_6_tensor, intermediate_3_tensor);
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_6_tensor, intermediate_3_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(intermediate_7_tensor, intermediate_4_tensor);
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_7_tensor, intermediate_4_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(16, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(16, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(128, 6, 32), dim3(128, 1, 1), 512>>>(intermediate_9_tensor, intermediate_8_tensor);
+  fused_scale_softmax_forward<<<dim3(128, 6, 32), dim3(128, 1, 1), 512>>>(fused_scale_softmax_forward(intermediate_9_tensor, intermediate_8_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(8, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor);
+  batched_matmul_tiled<<<dim3(8, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>(intermediate_11_tensor, intermediate_10_tensor);
+  concat_heads_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_11_tensor, intermediate_10_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(intermediate_12_tensor, intermediate_11_tensor, param_8_weights, param_9_bias);
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_12_tensor, intermediate_11_tensor, param_tensors[8], param_tensors[9]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_13_tensor, intermediate_1_tensor, intermediate_12_tensor);
+  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_13_tensor, intermediate_1_tensor, intermediate_12_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(intermediate_14_tensor, intermediate_13_tensor, param_10_gamma, param_11_beta);
+  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_14_tensor, intermediate_13_tensor, param_tensors[10], param_tensors[11]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_15_tensor, intermediate_14_tensor, param_12_weights, param_13_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_15_tensor, intermediate_14_tensor, param_tensors[12], param_tensors[13]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_16_tensor, intermediate_15_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_16_tensor, intermediate_15_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_17_tensor, intermediate_16_tensor, param_14_weights, param_15_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_17_tensor, intermediate_16_tensor, param_tensors[14], param_tensors[15]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_18_tensor, intermediate_14_tensor, intermediate_17_tensor);
+  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_18_tensor, intermediate_14_tensor, intermediate_17_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(intermediate_19_tensor, intermediate_18_tensor, param_16_gamma, param_17_beta);
+  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_19_tensor, intermediate_18_tensor, param_tensors[16], param_tensors[17]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_20_tensor, intermediate_19_tensor, param_18_weights, param_19_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_20_tensor, intermediate_19_tensor, param_tensors[18], param_tensors[19]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_21_tensor, intermediate_19_tensor, param_20_weights, param_21_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_21_tensor, intermediate_19_tensor, param_tensors[20], param_tensors[21]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_22_tensor, intermediate_19_tensor, param_22_weights, param_23_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_22_tensor, intermediate_19_tensor, param_tensors[22], param_tensors[23]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_23_tensor, intermediate_20_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_23_tensor, intermediate_20_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_24_tensor, intermediate_21_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_24_tensor, intermediate_21_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_25_tensor, intermediate_22_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_25_tensor, intermediate_22_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_27_tensor, intermediate_26_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_27_tensor, intermediate_26_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor);
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(intermediate_29_tensor, intermediate_28_tensor);
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_29_tensor, intermediate_28_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(intermediate_30_tensor, intermediate_29_tensor, param_24_weights, param_25_bias);
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_30_tensor, intermediate_29_tensor, param_tensors[24], param_tensors[25]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_31_tensor, intermediate_19_tensor, intermediate_30_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_31_tensor, intermediate_19_tensor, intermediate_30_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_32_tensor, intermediate_31_tensor, param_26_gamma, param_27_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_32_tensor, intermediate_31_tensor, param_tensors[26], param_tensors[27]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_33_tensor, intermediate_32_tensor, param_28_weights, param_29_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_33_tensor, intermediate_32_tensor, param_tensors[28], param_tensors[29]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_34_tensor, intermediate_33_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_34_tensor, intermediate_33_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_35_tensor, intermediate_34_tensor, param_30_weights, param_31_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_35_tensor, intermediate_34_tensor, param_tensors[30], param_tensors[31]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_36_tensor, intermediate_32_tensor, intermediate_35_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_36_tensor, intermediate_32_tensor, intermediate_35_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_37_tensor, intermediate_36_tensor, param_32_gamma, param_33_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_37_tensor, intermediate_36_tensor, param_tensors[32], param_tensors[33]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_38_tensor, intermediate_37_tensor, param_34_weights, param_35_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_38_tensor, intermediate_37_tensor, param_tensors[34], param_tensors[35]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_39_tensor, intermediate_37_tensor, param_36_weights, param_37_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_39_tensor, intermediate_37_tensor, param_tensors[36], param_tensors[37]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_40_tensor, intermediate_37_tensor, param_38_weights, param_39_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_40_tensor, intermediate_37_tensor, param_tensors[38], param_tensors[39]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_41_tensor, intermediate_38_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_41_tensor, intermediate_38_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_42_tensor, intermediate_39_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_42_tensor, intermediate_39_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_43_tensor, intermediate_40_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_43_tensor, intermediate_40_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_44_tensor, intermediate_41_tensor, intermediate_42_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_44_tensor, intermediate_41_tensor, intermediate_42_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_45_tensor, intermediate_44_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_45_tensor, intermediate_44_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_46_tensor, intermediate_45_tensor, intermediate_43_tensor);
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_46_tensor, intermediate_45_tensor, intermediate_43_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(intermediate_47_tensor, intermediate_46_tensor);
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_47_tensor, intermediate_46_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(intermediate_48_tensor, intermediate_47_tensor, param_40_weights, param_41_bias);
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_48_tensor, intermediate_47_tensor, param_tensors[40], param_tensors[41]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_49_tensor, intermediate_37_tensor, intermediate_48_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_49_tensor, intermediate_37_tensor, intermediate_48_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_50_tensor, intermediate_49_tensor, param_42_gamma, param_43_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_50_tensor, intermediate_49_tensor, param_tensors[42], param_tensors[43]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_51_tensor, intermediate_50_tensor, param_44_weights, param_45_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_51_tensor, intermediate_50_tensor, param_tensors[44], param_tensors[45]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_52_tensor, intermediate_51_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_52_tensor, intermediate_51_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_53_tensor, intermediate_52_tensor, param_46_weights, param_47_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_53_tensor, intermediate_52_tensor, param_tensors[46], param_tensors[47]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_54_tensor, intermediate_50_tensor, intermediate_53_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_54_tensor, intermediate_50_tensor, intermediate_53_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_55_tensor, intermediate_54_tensor, param_48_gamma, param_49_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_55_tensor, intermediate_54_tensor, param_tensors[48], param_tensors[49]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_56_tensor, intermediate_55_tensor, param_50_weights, param_51_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_56_tensor, intermediate_55_tensor, param_tensors[50], param_tensors[51]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_57_tensor, intermediate_55_tensor, param_52_weights, param_53_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_57_tensor, intermediate_55_tensor, param_tensors[52], param_tensors[53]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_58_tensor, intermediate_55_tensor, param_54_weights, param_55_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_58_tensor, intermediate_55_tensor, param_tensors[54], param_tensors[55]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_59_tensor, intermediate_56_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_59_tensor, intermediate_56_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_60_tensor, intermediate_57_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_60_tensor, intermediate_57_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_61_tensor, intermediate_58_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_61_tensor, intermediate_58_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_62_tensor, intermediate_59_tensor, intermediate_60_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_62_tensor, intermediate_59_tensor, intermediate_60_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_63_tensor, intermediate_62_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_63_tensor, intermediate_62_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_64_tensor, intermediate_63_tensor, intermediate_61_tensor);
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_64_tensor, intermediate_63_tensor, intermediate_61_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(intermediate_65_tensor, intermediate_64_tensor);
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_65_tensor, intermediate_64_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(intermediate_66_tensor, intermediate_65_tensor, param_56_weights, param_57_bias);
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_66_tensor, intermediate_65_tensor, param_tensors[56], param_tensors[57]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_67_tensor, intermediate_55_tensor, intermediate_66_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_67_tensor, intermediate_55_tensor, intermediate_66_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_68_tensor, intermediate_67_tensor, param_58_gamma, param_59_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_68_tensor, intermediate_67_tensor, param_tensors[58], param_tensors[59]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_69_tensor, intermediate_68_tensor, param_60_weights, param_61_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_69_tensor, intermediate_68_tensor, param_tensors[60], param_tensors[61]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_70_tensor, intermediate_69_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_70_tensor, intermediate_69_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_71_tensor, intermediate_70_tensor, param_62_weights, param_63_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_71_tensor, intermediate_70_tensor, param_tensors[62], param_tensors[63]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_72_tensor, intermediate_68_tensor, intermediate_71_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_72_tensor, intermediate_68_tensor, intermediate_71_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_73_tensor, intermediate_72_tensor, param_64_gamma, param_65_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_73_tensor, intermediate_72_tensor, param_tensors[64], param_tensors[65]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_74_tensor, intermediate_73_tensor, param_66_weights, param_67_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_74_tensor, intermediate_73_tensor, param_tensors[66], param_tensors[67]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_75_tensor, intermediate_73_tensor, param_68_weights, param_69_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_75_tensor, intermediate_73_tensor, param_tensors[68], param_tensors[69]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_76_tensor, intermediate_73_tensor, param_70_weights, param_71_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_76_tensor, intermediate_73_tensor, param_tensors[70], param_tensors[71]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_77_tensor, intermediate_74_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_77_tensor, intermediate_74_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_78_tensor, intermediate_75_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_78_tensor, intermediate_75_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_79_tensor, intermediate_76_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_79_tensor, intermediate_76_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_80_tensor, intermediate_77_tensor, intermediate_78_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_80_tensor, intermediate_77_tensor, intermediate_78_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_81_tensor, intermediate_80_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_81_tensor, intermediate_80_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_82_tensor, intermediate_81_tensor, intermediate_79_tensor);
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_82_tensor, intermediate_81_tensor, intermediate_79_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(intermediate_83_tensor, intermediate_82_tensor);
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_83_tensor, intermediate_82_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(intermediate_84_tensor, intermediate_83_tensor, param_72_weights, param_73_bias);
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_84_tensor, intermediate_83_tensor, param_tensors[72], param_tensors[73]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_85_tensor, intermediate_73_tensor, intermediate_84_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_85_tensor, intermediate_73_tensor, intermediate_84_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_86_tensor, intermediate_85_tensor, param_74_gamma, param_75_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_86_tensor, intermediate_85_tensor, param_tensors[74], param_tensors[75]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_87_tensor, intermediate_86_tensor, param_76_weights, param_77_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_87_tensor, intermediate_86_tensor, param_tensors[76], param_tensors[77]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_88_tensor, intermediate_87_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_88_tensor, intermediate_87_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_89_tensor, intermediate_88_tensor, param_78_weights, param_79_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_89_tensor, intermediate_88_tensor, param_tensors[78], param_tensors[79]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_90_tensor, intermediate_86_tensor, intermediate_89_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_90_tensor, intermediate_86_tensor, intermediate_89_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_91_tensor, intermediate_90_tensor, param_80_gamma, param_81_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_91_tensor, intermediate_90_tensor, param_tensors[80], param_tensors[81]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_92_tensor, intermediate_91_tensor, param_82_weights, param_83_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_92_tensor, intermediate_91_tensor, param_tensors[82], param_tensors[83]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_93_tensor, intermediate_91_tensor, param_84_weights, param_85_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_93_tensor, intermediate_91_tensor, param_tensors[84], param_tensors[85]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_94_tensor, intermediate_91_tensor, param_86_weights, param_87_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_94_tensor, intermediate_91_tensor, param_tensors[86], param_tensors[87]););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_95_tensor, intermediate_92_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_95_tensor, intermediate_92_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_96_tensor, intermediate_93_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_96_tensor, intermediate_93_tensor););
   CUDA_CHECK(cudaGetLastError());
-  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(intermediate_97_tensor, intermediate_94_tensor);
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_97_tensor, intermediate_94_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_98_tensor, intermediate_95_tensor, intermediate_96_tensor);
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_98_tensor, intermediate_95_tensor, intermediate_96_tensor););
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_99_tensor, intermediate_98_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_99_tensor, intermediate_98_tensor););
   CUDA_CHECK(cudaGetLastError());
-  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(intermediate_100_tensor, intermediate_99_tensor, intermediate_97_tensor);
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_100_tensor, intermediate_99_tensor, intermediate_97_tensor););
   CUDA_CHECK(cudaGetLastError());
-  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(intermediate_101_tensor, intermediate_100_tensor);
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_101_tensor, intermediate_100_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(intermediate_102_tensor, intermediate_101_tensor, param_88_weights, param_89_bias);
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_102_tensor, intermediate_101_tensor, param_tensors[88], param_tensors[89]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_103_tensor, intermediate_91_tensor, intermediate_102_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_103_tensor, intermediate_91_tensor, intermediate_102_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_104_tensor, intermediate_103_tensor, param_90_gamma, param_91_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_104_tensor, intermediate_103_tensor, param_tensors[90], param_tensors[91]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(intermediate_105_tensor, intermediate_104_tensor, param_92_weights, param_93_bias);
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_105_tensor, intermediate_104_tensor, param_tensors[92], param_tensors[93]););
   CUDA_CHECK(cudaGetLastError());
-  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_106_tensor, intermediate_105_tensor);
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_106_tensor, intermediate_105_tensor););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_107_tensor, intermediate_106_tensor, param_94_weights, param_95_bias);
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_107_tensor, intermediate_106_tensor, param_tensors[94], param_tensors[95]););
   CUDA_CHECK(cudaGetLastError());
-  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(intermediate_108_tensor, intermediate_104_tensor, intermediate_107_tensor);
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_108_tensor, intermediate_104_tensor, intermediate_107_tensor););
   CUDA_CHECK(cudaGetLastError());
-  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(intermediate_109_tensor, intermediate_108_tensor, param_96_gamma, param_97_beta);
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_109_tensor, intermediate_108_tensor, param_tensors[96], param_tensors[97]););
   CUDA_CHECK(cudaGetLastError());
-  dense_forward_2d<<<dim3(1, 32), dim3(256, 1, 1), 0>>>(intermediate_110_tensor, intermediate_109_tensor, param_98_weights, param_99_bias);
+  dense_forward_2d<<<dim3(1, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_110_tensor, intermediate_109_tensor, param_tensors[98], param_tensors[99]););
   CUDA_CHECK(cudaGetLastError());
-  softmax_forward<<<dim3(32, 1, 1), dim3(96, 1, 1), 384>>>(output, intermediate_110_tensor);
+  softmax_forward<<<dim3(32, 1, 1), dim3(96, 1, 1), 384>>>(softmax_forward(output, intermediate_110_tensor););
   CUDA_CHECK(cudaGetLastError());
- 
- // --- Synchronization for completion verification ---
- CUDA_CHECK(cudaDeviceSynchronize());
- 
- // --- Report memory usage ---
- size_t used_memory = allocator.get_used_size();
- if (used_memory > 0) {
-   // Uncomment for debugging memory usage
-   // printf("Workspace memory used: %zu bytes (%.2f MB)\n", used_memory, used_memory / (1024.0 * 1024.0));
- }
- 
- // --- End Execution Flow ---
+    
+    // --- Synchronization for completion verification ---
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
+    // --- Report memory usage ---
+    size_t used_memory = allocator.get_used_size();
+    if (used_memory > 0) {
+        // Uncomment for debugging memory usage
+        // printf("Workspace memory used: %zu bytes (%.2f MB)\n", used_memory, used_memory / (1024.0 * 1024.0));
+    }
 }
-   
+
+// ======================================================
+// Simplified C-style Interface (for easier FFI)
+// ======================================================
+extern "C" void executeGraphSimple(
+    void* input_data,
+    int input_batch_size,
+    int input_seq_len,
+    
+    void* output_data,
+    int output_batch_size,
+    int output_vocab_size,
+    
+    void** param_data,
+    
+    char* workspace,
+    size_t workspace_size
+) {
+    // Fixed shapes for this specific model
+    const int input_shape[] = {input_batch_size, input_seq_len};
+    const int output_shape[] = {output_batch_size, output_vocab_size};
+    
+    // Parameter shapes are hardcoded for this specific model configuration
+        const int param_shape_0[] = {65, 384}; // param_0_embeddings\n    const int param_shape_1[] = {192}; // param_1_frequencies\n    const int param_shape_2[] = {384, 384}; // param_2_weights\n    const int param_shape_3[] = {384}; // param_3_bias\n    const int param_shape_4[] = {384, 384}; // param_4_weights\n    const int param_shape_5[] = {384}; // param_5_bias\n    const int param_shape_6[] = {384, 384}; // param_6_weights\n    const int param_shape_7[] = {384}; // param_7_bias\n    const int param_shape_8[] = {384, 384}; // param_8_weights\n    const int param_shape_9[] = {384}; // param_9_bias\n    const int param_shape_10[] = {384}; // param_10_gamma\n    const int param_shape_11[] = {384}; // param_11_beta\n    const int param_shape_12[] = {384, 384}; // param_12_weights\n    const int param_shape_13[] = {384}; // param_13_bias\n    const int param_shape_14[] = {384, 384}; // param_14_weights\n    const int param_shape_15[] = {384}; // param_15_bias\n    const int param_shape_16[] = {384}; // param_16_gamma\n    const int param_shape_17[] = {384}; // param_17_beta\n    const int param_shape_18[] = {384, 384}; // param_18_weights\n    const int param_shape_19[] = {384}; // param_19_bias\n    const int param_shape_20[] = {384, 384}; // param_20_weights\n    const int param_shape_21[] = {384}; // param_21_bias\n    const int param_shape_22[] = {384, 384}; // param_22_weights\n    const int param_shape_23[] = {384}; // param_23_bias\n    const int param_shape_24[] = {384, 384}; // param_24_weights\n    const int param_shape_25[] = {384}; // param_25_bias\n    const int param_shape_26[] = {384}; // param_26_gamma\n    const int param_shape_27[] = {384}; // param_27_beta\n    const int param_shape_28[] = {384, 384}; // param_28_weights\n    const int param_shape_29[] = {384}; // param_29_bias\n    const int param_shape_30[] = {384, 384}; // param_30_weights\n    const int param_shape_31[] = {384}; // param_31_bias\n    const int param_shape_32[] = {384}; // param_32_gamma\n    const int param_shape_33[] = {384}; // param_33_beta\n    const int param_shape_34[] = {384, 384}; // param_34_weights\n    const int param_shape_35[] = {384}; // param_35_bias\n    const int param_shape_36[] = {384, 384}; // param_36_weights\n    const int param_shape_37[] = {384}; // param_37_bias\n    const int param_shape_38[] = {384, 384}; // param_38_weights\n    const int param_shape_39[] = {384}; // param_39_bias\n    const int param_shape_40[] = {384, 384}; // param_40_weights\n    const int param_shape_41[] = {384}; // param_41_bias\n    const int param_shape_42[] = {384}; // param_42_gamma\n    const int param_shape_43[] = {384}; // param_43_beta\n    const int param_shape_44[] = {384, 384}; // param_44_weights\n    const int param_shape_45[] = {384}; // param_45_bias\n    const int param_shape_46[] = {384, 384}; // param_46_weights\n    const int param_shape_47[] = {384}; // param_47_bias\n    const int param_shape_48[] = {384}; // param_48_gamma\n    const int param_shape_49[] = {384}; // param_49_beta\n    const int param_shape_50[] = {384, 384}; // param_50_weights\n    const int param_shape_51[] = {384}; // param_51_bias\n    const int param_shape_52[] = {384, 384}; // param_52_weights\n    const int param_shape_53[] = {384}; // param_53_bias\n    const int param_shape_54[] = {384, 384}; // param_54_weights\n    const int param_shape_55[] = {384}; // param_55_bias\n    const int param_shape_56[] = {384, 384}; // param_56_weights\n    const int param_shape_57[] = {384}; // param_57_bias\n    const int param_shape_58[] = {384}; // param_58_gamma\n    const int param_shape_59[] = {384}; // param_59_beta\n    const int param_shape_60[] = {384, 384}; // param_60_weights\n    const int param_shape_61[] = {384}; // param_61_bias\n    const int param_shape_62[] = {384, 384}; // param_62_weights\n    const int param_shape_63[] = {384}; // param_63_bias\n    const int param_shape_64[] = {384}; // param_64_gamma\n    const int param_shape_65[] = {384}; // param_65_beta\n    const int param_shape_66[] = {384, 384}; // param_66_weights\n    const int param_shape_67[] = {384}; // param_67_bias\n    const int param_shape_68[] = {384, 384}; // param_68_weights\n    const int param_shape_69[] = {384}; // param_69_bias\n    const int param_shape_70[] = {384, 384}; // param_70_weights\n    const int param_shape_71[] = {384}; // param_71_bias\n    const int param_shape_72[] = {384, 384}; // param_72_weights\n    const int param_shape_73[] = {384}; // param_73_bias\n    const int param_shape_74[] = {384}; // param_74_gamma\n    const int param_shape_75[] = {384}; // param_75_beta\n    const int param_shape_76[] = {384, 384}; // param_76_weights\n    const int param_shape_77[] = {384}; // param_77_bias\n    const int param_shape_78[] = {384, 384}; // param_78_weights\n    const int param_shape_79[] = {384}; // param_79_bias\n    const int param_shape_80[] = {384}; // param_80_gamma\n    const int param_shape_81[] = {384}; // param_81_beta\n    const int param_shape_82[] = {384, 384}; // param_82_weights\n    const int param_shape_83[] = {384}; // param_83_bias\n    const int param_shape_84[] = {384, 384}; // param_84_weights\n    const int param_shape_85[] = {384}; // param_85_bias\n    const int param_shape_86[] = {384, 384}; // param_86_weights\n    const int param_shape_87[] = {384}; // param_87_bias\n    const int param_shape_88[] = {384, 384}; // param_88_weights\n    const int param_shape_89[] = {384}; // param_89_bias\n    const int param_shape_90[] = {384}; // param_90_gamma\n    const int param_shape_91[] = {384}; // param_91_beta\n    const int param_shape_92[] = {384, 384}; // param_92_weights\n    const int param_shape_93[] = {384}; // param_93_bias\n    const int param_shape_94[] = {384, 384}; // param_94_weights\n    const int param_shape_95[] = {384}; // param_95_bias\n    const int param_shape_96[] = {384}; // param_96_gamma\n    const int param_shape_97[] = {384}; // param_97_beta\n    const int param_shape_98[] = {384, 384}; // param_98_weights\n    const int param_shape_99[] = {384}; // param_99_bias
+    
+    const int* param_shapes[100] = {
+        param_shape_0,\n        param_shape_1,\n        param_shape_2,\n        param_shape_3,\n        param_shape_4,\n        param_shape_5,\n        param_shape_6,\n        param_shape_7,\n        param_shape_8,\n        param_shape_9,\n        param_shape_10,\n        param_shape_11,\n        param_shape_12,\n        param_shape_13,\n        param_shape_14,\n        param_shape_15,\n        param_shape_16,\n        param_shape_17,\n        param_shape_18,\n        param_shape_19,\n        param_shape_20,\n        param_shape_21,\n        param_shape_22,\n        param_shape_23,\n        param_shape_24,\n        param_shape_25,\n        param_shape_26,\n        param_shape_27,\n        param_shape_28,\n        param_shape_29,\n        param_shape_30,\n        param_shape_31,\n        param_shape_32,\n        param_shape_33,\n        param_shape_34,\n        param_shape_35,\n        param_shape_36,\n        param_shape_37,\n        param_shape_38,\n        param_shape_39,\n        param_shape_40,\n        param_shape_41,\n        param_shape_42,\n        param_shape_43,\n        param_shape_44,\n        param_shape_45,\n        param_shape_46,\n        param_shape_47,\n        param_shape_48,\n        param_shape_49,\n        param_shape_50,\n        param_shape_51,\n        param_shape_52,\n        param_shape_53,\n        param_shape_54,\n        param_shape_55,\n        param_shape_56,\n        param_shape_57,\n        param_shape_58,\n        param_shape_59,\n        param_shape_60,\n        param_shape_61,\n        param_shape_62,\n        param_shape_63,\n        param_shape_64,\n        param_shape_65,\n        param_shape_66,\n        param_shape_67,\n        param_shape_68,\n        param_shape_69,\n        param_shape_70,\n        param_shape_71,\n        param_shape_72,\n        param_shape_73,\n        param_shape_74,\n        param_shape_75,\n        param_shape_76,\n        param_shape_77,\n        param_shape_78,\n        param_shape_79,\n        param_shape_80,\n        param_shape_81,\n        param_shape_82,\n        param_shape_83,\n        param_shape_84,\n        param_shape_85,\n        param_shape_86,\n        param_shape_87,\n        param_shape_88,\n        param_shape_89,\n        param_shape_90,\n        param_shape_91,\n        param_shape_92,\n        param_shape_93,\n        param_shape_94,\n        param_shape_95,\n        param_shape_96,\n        param_shape_97,\n        param_shape_98,\n        param_shape_99
+    };
+    
+    const int param_dims[100] = {
+        2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1
+    };
+    
+    const char* param_dtypes[100] = {
+        "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32", "float32"
+    };
+    
+    executeGraph(
+        input_data, input_shape, 2, "int32",
+        output_data, output_shape, 2, "float32",
+        param_data, param_shapes, param_dims, param_dtypes, 100,
+        workspace, workspace_size
+    );
+}
