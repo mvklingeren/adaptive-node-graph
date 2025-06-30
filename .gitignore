@@ -5,3 +5,5 @@ src/.DS_Store
 
 
 dist/
+
+*.tar.gz
