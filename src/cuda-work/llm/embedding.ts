@@ -47,20 +47,28 @@ export class EmbeddingLayer implements Layer {
     `;
 
     const embeddingNode = new CudaNode(deviceCode, "embedding_forward")
-      .addInput("input", [-1, this.maxLen], "int32")
-      .addOutput("output", [-1, this.maxLen, this.embedDim], "float32")
+      .addInput("input", [-1, -1], "int32")
+      .addOutput("output", [-1, -1, this.embedDim], "float32")
       .addParameter("embeddings", this.embeddings)
       .setShapeResolver((inputs) => {
         const inputShape = inputs.get("input")!.shape;
         const batchSize = inputShape[0];
-        // Only resolve if we have a concrete batch size
-        if (batchSize === -1) {
-          // Return empty map if batch size is still dynamic
+        const actualSeqLen = inputShape[1];
+        
+        // Only resolve if we have concrete batch size and sequence length
+        if (batchSize === -1 || actualSeqLen === -1) {
+          // Return empty map if dimensions are still dynamic
           return new Map();
         }
-        // Resolve output shape when we have a concrete batch size
+        
+        // Validate sequence length doesn't exceed maximum
+        if (actualSeqLen > this.maxLen) {
+          throw new Error(`Sequence length ${actualSeqLen} exceeds maximum ${this.maxLen}`);
+        }
+        
+        // Use actual sequence length from input instead of hardcoded maxLen
         return new Map([
-          ["output", { shape: [batchSize, this.maxLen, this.embedDim] }],
+          ["output", { shape: [batchSize, actualSeqLen, this.embedDim] }],
         ]);
       });
 
