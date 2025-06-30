@@ -390,7 +390,7 @@ export class CudaGraphCompiler {
     const executionOrder = graph.getExecutionOrder();
     const filename = `generated-${graph.name}-kernel.cu`;
     
-    const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
+    const { intermediateTensors, workspaceSize, tensorRegistry, memoryPools } = this.planMemory(graph, executionOrder);
 
     // Add intermediate tensors to the registry BEFORE processing nodes
     const variableDeclarations: string[] = [];
@@ -570,16 +570,32 @@ struct Tensor {
     
     const tensorInstantiations: string[] = [];
     
-    // Create tensor instantiations for intermediate tensors using dynamic allocation
+    // Create tensor instantiations for intermediate tensors using memory pools
     intermediateIdx = 0;
     for (const [key, tensorInfo] of intermediateTensors.entries()) {
         const varName = `intermediate_${intermediateIdx}`;
         const shapeVar = `${varName}_shape`;
         const tensorVar = `${varName}_tensor`;
-        const sizeInBytes = tensorInfo.spec.shape.reduce((a, b) => a * b, 1) * 4; // float = 4 bytes
-        tensorInstantiations.push(`  float* ${varName}_data = (float*)allocator.allocate(${sizeInBytes});`);
-        tensorInstantiations.push(`  if (!${varName}_data) { fprintf(stderr, "Failed to allocate memory for ${varName}\\n"); return; }`);
-        tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {${varName}_data, ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+        
+        if (tensorInfo.poolId?.startsWith('inplace_')) {
+            // For in-place operations, use the same memory offset as the source tensor
+            const sourceKey = tensorInfo.poolId.replace('inplace_', '');
+            const sourceTensor = intermediateTensors.get(sourceKey);
+            if (sourceTensor && sourceTensor.offset >= 0) {
+                // Use the same offset as the source tensor but with our own shape
+                tensorInstantiations.push(`  float* ${varName}_data = (float*)(workspace + ${sourceTensor.offset}); // In-place reuse of ${sourceKey}`);
+                tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {${varName}_data, ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+            } else {
+                // Fallback to offset-based allocation if source not found
+                tensorInstantiations.push(`  float* ${varName}_data = (float*)(workspace + ${tensorInfo.offset});`);
+                tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {${varName}_data, ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+            }
+        } else {
+            // Use offset-based allocation from memory pools with bounds checking
+            tensorInstantiations.push(`  // Pool: ${tensorInfo.poolId || 'default'}, Offset: ${tensorInfo.offset}, Size: ${tensorInfo.size} bytes`);
+            tensorInstantiations.push(`  float* ${varName}_data = (float*)(workspace + ${tensorInfo.offset});`);
+            tensorInstantiations.push(`  Tensor<float> ${tensorVar} = {${varName}_data, ${shapeVar}, ${tensorInfo.spec.shape.length}};`);
+        }
         intermediateIdx++;
     }
 
@@ -679,8 +695,10 @@ extern "C" void executeGraph(
     return;
   }
   
-  // Note: We no longer check for exact workspace size since we're using dynamic allocation
-  // The allocator will report if we run out of space
+  if (workspace_size < ${workspaceSize}) {
+    fprintf(stderr, "Error: Insufficient workspace size. Required: ${workspaceSize} bytes, Provided: %zu bytes\\n", workspace_size);
+    return;
+  }
   
   // --- Initialize Dynamic Memory Allocator ---
   WorkspaceAllocator allocator(workspace, workspace_size);
@@ -728,9 +746,10 @@ ${executionCalls.join("\n")}
   }
 
   private planMemory(graph: CudaGraph, executionOrder: CudaNode[]): {
-      intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>,
+      intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, poolId?: string }>,
       workspaceSize: number,
-      tensorRegistry: Map<string, { varName: string, spec: { shape: number[], dtype: string } }>
+      tensorRegistry: Map<string, { varName: string, spec: { shape: number[], dtype: string } }>,
+      memoryPools: Map<string, { size: number, tensors: string[], offset: number }>
   } {
     const tensorRegistry = new Map<string, { varName: string, spec: { shape: number[], dtype: string } }>();
     const graphInputs = graph.getGraphInputs();
@@ -743,7 +762,7 @@ ${executionCalls.join("\n")}
       tensorRegistry.set(`${node.id}:${outputPort}`, { varName: outputPort, spec: node.outputs.get(port)! });
     }
 
-    const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>();
+    const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, poolId?: string }>();
     
     // First pass: collect all intermediate tensors and their lifetimes
     executionOrder.forEach((node, i) => {
@@ -760,71 +779,274 @@ ${executionCalls.join("\n")}
         }
     });
 
-    // Second pass: determine when each tensor is last used
+    // Second pass: enhanced tensor lifetime analysis with transitive dependencies
+    this.computeEnhancedLifetimes(graph, executionOrder, intermediateTensors);
+
+    // Third pass: detect in-place operation opportunities
+    this.detectInPlaceOperations(graph, executionOrder, intermediateTensors);
+
+    // Fourth pass: create memory pools and allocate with advanced reuse
+    const { memoryPools, workspaceSize } = this.allocateWithMemoryPools(intermediateTensors);
+    
+    const totalTensorSize = Array.from(intermediateTensors.values())
+        .reduce((sum, tensor) => sum + this.alignTo256Bytes(tensor.size), 0);
+    const efficiency = workspaceSize > 0 ? ((totalTensorSize / workspaceSize) * 100).toFixed(1) : "N/A";
+    const savings = totalTensorSize - workspaceSize;
+    
+    console.log(`[Enhanced Memory Planning] Total workspace size: ${workspaceSize} bytes (${(workspaceSize / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Enhanced Memory Planning] Total tensor size (if not reused): ${totalTensorSize} bytes (${(totalTensorSize / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Enhanced Memory Planning] Memory saved: ${savings} bytes (${(savings / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Enhanced Memory Planning] Memory efficiency: ${efficiency}%`);
+    console.log(`[Enhanced Memory Planning] Memory pools created: ${memoryPools.size}`);
+
+    return { intermediateTensors, workspaceSize, tensorRegistry, memoryPools };
+  }
+
+  private computeEnhancedLifetimes(
+    graph: CudaGraph, 
+    executionOrder: CudaNode[], 
+    intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, poolId?: string }>
+  ): void {
+    // Build dependency graph for transitive lifetime analysis
+    const dependencyGraph = new Map<string, Set<string>>();
+    const reverseDependencyGraph = new Map<string, Set<string>>();
+    
+    for (const conn of graph.connections) {
+      const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
+      const targetKey = `${conn.toNode.id}:${conn.toPort}`;
+      
+      if (!dependencyGraph.has(sourceKey)) dependencyGraph.set(sourceKey, new Set());
+      if (!reverseDependencyGraph.has(targetKey)) reverseDependencyGraph.set(targetKey, new Set());
+      
+      dependencyGraph.get(sourceKey)!.add(targetKey);
+      reverseDependencyGraph.get(targetKey)!.add(sourceKey);
+    }
+
+    // Compute last usage considering all downstream dependencies
     executionOrder.forEach((node, i) => {
         for (const [inputPort, spec] of node.inputs) {
-            if (spec.shape.includes(-1)) {
-                 throw new Error(`Compiler error: Unresolved dynamic shape ${JSON.stringify(spec.shape)} for input '${inputPort}' of node '${node.name}'.`);
-            }
             const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === inputPort);
             if (conn) {
                 const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
                 if (intermediateTensors.has(sourceKey)) {
+                    // Update direct usage
                     intermediateTensors.get(sourceKey)!.liveEnd = Math.max(intermediateTensors.get(sourceKey)!.liveEnd, i);
+                    
+                    // Also consider transitive dependencies - if this tensor feeds into long-lived computations
+                    this.propagateLifetimeExtension(sourceKey, i, dependencyGraph, intermediateTensors, executionOrder);
                 }
             }
         }
     });
+  }
 
-    // Third pass: allocate memory using a greedy algorithm
-    const alignTo256Bytes = (size: number): number => Math.ceil(size / 256) * 256;
-    const memoryBlocks: { offset: number, size: number, freeAt: number }[] = [];
-    let workspaceSize = 0;
-
-    const sortedTensors = Array.from(intermediateTensors.values()).sort((a, b) => b.size - a.size);
-
-    for (const tensor of sortedTensors) {
-        const alignedSize = alignTo256Bytes(tensor.size);
-        let bestFitIndex = -1;
-        let minFitSize = Infinity;
-
-        // Find the best-fitting free block
-        for (let i = 0; i < memoryBlocks.length; i++) {
-            const block = memoryBlocks[i];
-            if (block.freeAt <= tensor.liveStart && block.size >= alignedSize) {
-                if (block.size < minFitSize) {
-                    minFitSize = block.size;
-                    bestFitIndex = i;
-                }
+  private propagateLifetimeExtension(
+    tensorKey: string,
+    currentEnd: number,
+    dependencyGraph: Map<string, Set<string>>,
+    intermediateTensors: Map<string, any>,
+    executionOrder: CudaNode[]
+  ): void {
+    const visited = new Set<string>();
+    const queue = [{ key: tensorKey, end: currentEnd }];
+    
+    while (queue.length > 0) {
+      const { key, end } = queue.shift()!;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      
+      const dependencies = dependencyGraph.get(key);
+      if (dependencies) {
+        for (const depKey of dependencies) {
+          if (intermediateTensors.has(depKey)) {
+            const tensor = intermediateTensors.get(depKey)!;
+            const extendedEnd = Math.min(end + 2, executionOrder.length - 1); // Small extension for safety
+            if (tensor.liveEnd < extendedEnd) {
+              tensor.liveEnd = extendedEnd;
+              queue.push({ key: depKey, end: extendedEnd });
             }
+          }
         }
+      }
+    }
+  }
 
-        if (bestFitIndex !== -1) {
-            // Allocate in the found block
-            const block = memoryBlocks[bestFitIndex];
-            tensor.offset = block.offset;
-            block.freeAt = tensor.liveEnd + 1;
-        } else {
-            // Allocate a new block
-            tensor.offset = workspaceSize;
-            memoryBlocks.push({
-                offset: workspaceSize,
-                size: alignedSize,
-                freeAt: tensor.liveEnd + 1
-            });
-            workspaceSize += alignedSize;
+  private detectInPlaceOperations(
+    graph: CudaGraph,
+    executionOrder: CudaNode[],
+    intermediateTensors: Map<string, any>
+  ): void {
+    // Detect operations that can reuse input buffers
+    const inPlaceCapableOps = new Set(['relu_forward', 'add_forward', 'scale_forward']);
+    
+    for (const node of executionOrder) {
+      if (inPlaceCapableOps.has(node.functionName)) {
+        // For element-wise operations, try to reuse the largest input buffer
+        const inputKeys = Array.from(node.inputs.keys()).map(port => {
+          const conn = Array.from(graph.connections).find(c => c.toNode === node && c.toPort === port);
+          return conn ? `${conn.fromNode.id}:${conn.fromPort}` : null;
+        }).filter(k => k !== null) as string[];
+        
+        const outputKeys = Array.from(node.outputs.keys()).map(port => `${node.id}:${port}`);
+        
+        if (inputKeys.length > 0 && outputKeys.length > 0) {
+          // Find the largest input that can be reused
+          let bestInputKey = inputKeys[0];
+          let bestInputSize = 0;
+          
+          for (const inputKey of inputKeys) {
+            const inputTensor = intermediateTensors.get(inputKey);
+            if (inputTensor && inputTensor.size > bestInputSize) {
+              bestInputSize = inputTensor.size;
+              bestInputKey = inputKey;
+            }
+          }
+          
+          const outputKey = outputKeys[0];
+          const outputTensor = intermediateTensors.get(outputKey);
+          const inputTensor = intermediateTensors.get(bestInputKey);
+          
+          // If output size matches input size, mark for in-place operation
+          if (inputTensor && outputTensor && inputTensor.size === outputTensor.size) {
+            outputTensor.poolId = `inplace_${bestInputKey}`;
+            console.log(`[In-Place Detection] ${node.functionName} can reuse buffer from ${bestInputKey}`);
+          }
         }
+      }
+    }
+  }
+
+  private allocateWithMemoryPools(
+    intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, poolId?: string }>
+  ): { memoryPools: Map<string, { size: number, tensors: string[], offset: number }>, workspaceSize: number } {
+    const memoryPools = new Map<string, { size: number, tensors: string[], offset: number }>();
+    
+    // Group tensors by size categories for pooling
+    const sizeCategories = new Map<string, Array<[string, any]>>();
+    
+    for (const [key, tensor] of intermediateTensors.entries()) {
+      // Skip tensors marked for in-place operations
+      if (tensor.poolId?.startsWith('inplace_')) {
+        continue;
+      }
+      
+      const category = this.categorizeTensorSize(tensor.size);
+      if (!sizeCategories.has(category)) {
+        sizeCategories.set(category, []);
+      }
+      sizeCategories.get(category)!.push([key, tensor]);
     }
     
-    const totalTensorSize = Array.from(intermediateTensors.values())
-        .reduce((sum, tensor) => sum + alignTo256Bytes(tensor.size), 0);
-    const efficiency = workspaceSize > 0 ? ((totalTensorSize / workspaceSize) * 100).toFixed(1) : "N/A";
+    let workspaceOffset = 0;
     
-    console.log(`[Memory Planning] Total workspace size: ${workspaceSize} bytes (${(workspaceSize / 1024 / 1024).toFixed(2)} MB)`);
-    console.log(`[Memory Planning] Total tensor size (if not reused): ${totalTensorSize} bytes (${(totalTensorSize / 1024 / 1024).toFixed(2)} MB)`);
-    console.log(`[Memory Planning] Memory efficiency: ${efficiency}%`);
+    // Process each size category
+    for (const [category, tensors] of sizeCategories.entries()) {
+      // Sort tensors by lifetime for optimal allocation
+      tensors.sort((a, b) => a[1].liveStart - b[1].liveStart);
+      
+      // Create memory pools for this category
+      const pools = this.createPoolsForCategory(category, tensors);
+      
+      // Allocate pools in workspace
+      for (const [poolId, pool] of pools.entries()) {
+        pool.offset = workspaceOffset;
+        workspaceOffset += pool.size;
+        memoryPools.set(poolId, pool);
+        
+        // Assign tensors to their pool offsets
+        for (const tensorKey of pool.tensors) {
+          const tensor = intermediateTensors.get(tensorKey);
+          if (tensor) {
+            tensor.offset = pool.offset;
+            tensor.poolId = poolId;
+          }
+        }
+      }
+    }
+    
+    // Handle in-place operations
+    for (const [key, tensor] of intermediateTensors.entries()) {
+      if (tensor.poolId?.startsWith('inplace_')) {
+        const sourceKey = tensor.poolId.replace('inplace_', '');
+        const sourceTensor = intermediateTensors.get(sourceKey);
+        if (sourceTensor) {
+          tensor.offset = sourceTensor.offset;
+          console.log(`[In-Place Allocation] ${key} reuses buffer from ${sourceKey} at offset ${tensor.offset}`);
+        }
+      }
+    }
+    
+    return { memoryPools, workspaceSize: workspaceOffset };
+  }
 
-    return { intermediateTensors, workspaceSize, tensorRegistry };
+  private categorizeTensorSize(size: number): string {
+    const MB = 1024 * 1024;
+    if (size < MB) return 'small';           // < 1MB
+    if (size < 10 * MB) return 'medium';     // 1-10MB  
+    if (size < 50 * MB) return 'large';      // 10-50MB
+    return 'xlarge';                         // > 50MB
+  }
+
+  private createPoolsForCategory(
+    category: string, 
+    tensors: Array<[string, any]>
+  ): Map<string, { size: number, tensors: string[], offset: number }> {
+    const pools = new Map<string, { size: number, tensors: string[], offset: number }>();
+    
+    // Advanced allocation algorithm based on interval scheduling
+    const intervals = tensors.map(([key, tensor]) => ({
+      key,
+      start: tensor.liveStart,
+      end: tensor.liveEnd,
+      size: this.alignTo256Bytes(tensor.size)
+    }));
+    
+    // Sort by start time
+    intervals.sort((a, b) => a.start - b.start);
+    
+    let poolCounter = 0;
+    
+    for (const interval of intervals) {
+      let assignedPool: string | null = null;
+      let bestPoolSize = Infinity;
+      
+      // Find the best-fitting pool that's available
+      for (const [poolId, pool] of pools.entries()) {
+        if (poolId.startsWith(category)) {
+          // Check if this pool is available (all tensors in pool end before this tensor starts)
+          const poolAvailable = pool.tensors.every(tensorKey => {
+            const tensor = tensors.find(([k]) => k === tensorKey)?.[1];
+            return tensor && tensor.liveEnd < interval.start;
+          });
+          
+          if (poolAvailable && pool.size >= interval.size && pool.size < bestPoolSize) {
+            assignedPool = poolId;
+            bestPoolSize = pool.size;
+          }
+        }
+      }
+      
+      if (assignedPool) {
+        // Reuse existing pool
+        pools.get(assignedPool)!.tensors.push(interval.key);
+      } else {
+        // Create new pool
+        const poolId = `${category}_pool_${poolCounter++}`;
+        pools.set(poolId, {
+          size: interval.size,
+          tensors: [interval.key],
+          offset: -1 // Will be set later
+        });
+      }
+    }
+    
+    console.log(`[Pool Creation] Category ${category}: Created ${pools.size} pools for ${tensors.length} tensors`);
+    
+    return pools;
+  }
+
+  private alignTo256Bytes(size: number): number {
+    return Math.ceil(size / 256) * 256;
   }
 
   private calculateOptimalGridBlock(
@@ -925,17 +1147,35 @@ ${executionCalls.join("\n")}
 
       case 'batched_matmul_transpose_b':
       case 'batched_matmul':
-        // Grid: (seq_len, num_heads, batch_size), Block: (seq_len or 256, whichever is smaller)
+        // Tiled matrix multiplication: Grid covers output matrix with tiles
         if (shape.length >= 4) {
           const batchSize = shape[0];
           const numHeads = shape[1];
-          const seqLen = shape[2];
-          const blockSize = Math.min(seqLen, 256);
-          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const outputHeight = shape[2]; // M dimension (rows)
+          const outputWidth = shape[3];  // N dimension (cols)
+          
+          // Choose optimal tile size based on matrix dimensions
+          let TILE_SIZE = 16; // Default tile size for most cases
+          
+          // Use larger tiles for bigger matrices to reduce grid overhead
+          if (outputHeight >= 512 && outputWidth >= 512) {
+            TILE_SIZE = 32;
+          } else if (outputHeight <= 64 && outputWidth <= 64) {
+            TILE_SIZE = 8; // Smaller tiles for small matrices
+          }
+          
+          // Calculate number of tiles needed to cover the output matrix
+          const tilesX = Math.ceil(outputWidth / TILE_SIZE);   // Tiles along width (N)
+          const tilesY = Math.ceil(outputHeight / TILE_SIZE);  // Tiles along height (M)
+          const totalBatches = batchSize * numHeads;           // Total batched operations
+          
+          // Shared memory: two input tiles (A and B) for tiled multiplication
+          const sharedMemSize = 2 * TILE_SIZE * TILE_SIZE * 4; // 2 tiles * sizeof(float)
+          
           return {
-            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
-            sharedMemSize: 0
+            gridDim: `dim3(${tilesX}, ${tilesY}, ${totalBatches})`,
+            blockDim: `dim3(${TILE_SIZE}, ${TILE_SIZE}, 1)`,
+            sharedMemSize: sharedMemSize
           };
         }
         break;
@@ -963,6 +1203,36 @@ ${executionCalls.join("\n")}
           const finalBlockSize = Math.min(alignedBlockSize, 1024);
           return {
             gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
+            blockDim: `dim3(${finalBlockSize}, 1, 1)`,
+            sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float)
+          };
+        }
+        break;
+
+      case 'fused_scale_softmax_forward':
+        // Fused scale + softmax operation with proper shared memory allocation
+        if (shape.length === 4) {
+          // 4D case: [batch, heads, seq, seq]
+          const batchSize = shape[0];
+          const numHeads = shape[1];
+          const seqLen = shape[2];
+          const blockSize = Math.min(seqLen, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const finalBlockSize = Math.min(alignedBlockSize, 1024);
+          return {
+            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
+            blockDim: `dim3(${finalBlockSize}, 1, 1)`,
+            sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float) for reduction
+          };
+        } else if (shape.length === 2) {
+          // 2D case: [batch, features]
+          const batchSize = shape[0];
+          const features = shape[1];
+          const blockSize = Math.min(features, 1024);
+          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
+          const finalBlockSize = Math.min(alignedBlockSize, 1024);
+          return {
+            gridDim: `dim3(${batchSize}, 1, 1)`,
             blockDim: `dim3(${finalBlockSize}, 1, 1)`,
             sharedMemSize: finalBlockSize * 4 // blockDim.x * sizeof(float)
           };

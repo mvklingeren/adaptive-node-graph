@@ -1308,7 +1308,7 @@ extern "C" void executeGraph(
   // Pool: medium_pool_0, Offset: 0, Size: 6291456 bytes
   float* intermediate_12_data = (float*)(workspace + 0);
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
-  float* intermediate_13_data = (float*)(workspace + 6291456); // In-place reuse of cudanode_27e05e88-c11b-4dd8-ac61-df180e7c2154:output
+  float* intermediate_13_data = (float*)(workspace + 6291456); // In-place reuse of cudanode_4ab6609c-38b0-453f-992f-b93d5c543ddd:output
   Tensor<float> intermediate_13_tensor = {intermediate_13_data, intermediate_13_shape, 3};
   // Pool: medium_pool_0, Offset: 0, Size: 6291456 bytes
   float* intermediate_14_data = (float*)(workspace + 0);
@@ -1316,12 +1316,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_15_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
-  float* intermediate_16_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_3712c765-1dc5-4bd4-baa2-2457970382bb:output
+  float* intermediate_16_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_d6275f17-b64f-420e-ba98-eb5b7e53de66:output
   Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
   // Pool: small_pool_0, Offset: 132120576, Size: 49152 bytes
   float* intermediate_17_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  float* intermediate_18_data = (float*)(workspace + 0); // In-place reuse of cudanode_de29d464-4893-4e48-8054-dca4c477e84c:output
+  float* intermediate_18_data = (float*)(workspace + 0); // In-place reuse of cudanode_f10432e7-7e07-4a7d-a025-52c53b850a20:output
   Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
   // Pool: medium_pool_0, Offset: 0, Size: 6291456 bytes
   float* intermediate_19_data = (float*)(workspace + 0);
@@ -1359,7 +1359,7 @@ extern "C" void executeGraph(
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_30_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
-  float* intermediate_31_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_b59419db-0f5f-4511-9a01-77d03c3026d5:output
+  float* intermediate_31_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_5e0ac06a-dbbc-4a30-a3b8-27df5cf20229:output
   Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_32_data = (float*)(workspace + 56623104);
@@ -1367,12 +1367,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_33_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
-  float* intermediate_34_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_64b2608d-5dba-46b5-9a58-59a41f982c5a:output
+  float* intermediate_34_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_17339f65-077c-43a4-baf9-ebd7d6bb066a:output
   Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
   // Pool: small_pool_1, Offset: 132317184, Size: 49152 bytes
   float* intermediate_35_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  float* intermediate_36_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_36329666-9d01-48c5-b1e1-b2e6948269b8:output
+  float* intermediate_36_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_77d13bb8-914b-443b-9c92-ddd1da9c7ae5:output
   Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_37_data = (float*)(workspace + 56623104);
@@ -1410,7 +1410,7 @@ extern "C" void executeGraph(
   // Pool: large_pool_3, Offset: 75497472, Size: 18874368 bytes
   float* intermediate_48_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_48_tensor = {intermediate_48_data, intermediate_48_shape, 3};
-  float* intermediate_49_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_041146cd-f1a8-4f21-a5f7-29695f3b69bb:output
+  float* intermediate_49_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_41bc01fb-04eb-4670-b2b7-e88ebdcb2893:output
   Tensor<float> intermediate_49_tensor = {intermediate_49_data, intermediate_49_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_50_data = (float*)(workspace + 56623104);
@@ -1418,12 +1418,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_51_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_51_tensor = {intermediate_51_data, intermediate_51_shape, 2};
-  float* intermediate_52_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_4edcc76e-7d99-4398-a7f9-0681c8023a07:output
+  float* intermediate_52_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_236aa534-469a-4756-b8e9-d99a9d46e71c:output
   Tensor<float> intermediate_52_tensor = {intermediate_52_data, intermediate_52_shape, 2};
   // Pool: small_pool_1, Offset: 132317184, Size: 49152 bytes
   float* intermediate_53_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_53_tensor = {intermediate_53_data, intermediate_53_shape, 2};
-  float* intermediate_54_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_df743f62-eac1-455f-b2eb-b4847bfd6fc3:output
+  float* intermediate_54_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_b29670fc-ef02-4fe6-8c9c-554902253bbe:output
   Tensor<float> intermediate_54_tensor = {intermediate_54_data, intermediate_54_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_55_data = (float*)(workspace + 56623104);
@@ -1461,7 +1461,7 @@ extern "C" void executeGraph(
   // Pool: large_pool_3, Offset: 75497472, Size: 18874368 bytes
   float* intermediate_66_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_66_tensor = {intermediate_66_data, intermediate_66_shape, 3};
-  float* intermediate_67_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_448978ee-e9b5-4772-8430-e29408dc119b:output
+  float* intermediate_67_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_3c84232b-b8d8-4d02-ae46-e89014bb4d8d:output
   Tensor<float> intermediate_67_tensor = {intermediate_67_data, intermediate_67_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_68_data = (float*)(workspace + 56623104);
@@ -1469,12 +1469,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_69_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_69_tensor = {intermediate_69_data, intermediate_69_shape, 2};
-  float* intermediate_70_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_0d49aaf0-e001-4742-b62a-8fbcf1e64d2b:output
+  float* intermediate_70_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_0988991e-aecc-43eb-9398-96bd832e2150:output
   Tensor<float> intermediate_70_tensor = {intermediate_70_data, intermediate_70_shape, 2};
   // Pool: small_pool_1, Offset: 132317184, Size: 49152 bytes
   float* intermediate_71_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_71_tensor = {intermediate_71_data, intermediate_71_shape, 2};
-  float* intermediate_72_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_f3f5fd0c-3bb6-4024-b5fb-4c60893f690e:output
+  float* intermediate_72_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_c95288f0-0cce-422a-8b59-bbe80a54c445:output
   Tensor<float> intermediate_72_tensor = {intermediate_72_data, intermediate_72_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_73_data = (float*)(workspace + 56623104);
@@ -1512,7 +1512,7 @@ extern "C" void executeGraph(
   // Pool: large_pool_3, Offset: 75497472, Size: 18874368 bytes
   float* intermediate_84_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_84_tensor = {intermediate_84_data, intermediate_84_shape, 3};
-  float* intermediate_85_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_eb3a8cf5-10e8-49cf-b236-d066da83e37c:output
+  float* intermediate_85_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_d5b957ba-1878-473f-9e19-2197e19dce49:output
   Tensor<float> intermediate_85_tensor = {intermediate_85_data, intermediate_85_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_86_data = (float*)(workspace + 56623104);
@@ -1520,12 +1520,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_87_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_87_tensor = {intermediate_87_data, intermediate_87_shape, 2};
-  float* intermediate_88_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_0d17b5cd-846f-40db-8678-a34c1fbfa4e5:output
+  float* intermediate_88_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_cbd28b00-8cec-4b21-bf31-b52e228ba6e3:output
   Tensor<float> intermediate_88_tensor = {intermediate_88_data, intermediate_88_shape, 2};
   // Pool: small_pool_1, Offset: 132317184, Size: 49152 bytes
   float* intermediate_89_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_89_tensor = {intermediate_89_data, intermediate_89_shape, 2};
-  float* intermediate_90_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_dc44b60e-956f-4be6-b773-9006ae7aefdf:output
+  float* intermediate_90_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_a20db17c-60d4-4f46-a922-d60fc84c59c1:output
   Tensor<float> intermediate_90_tensor = {intermediate_90_data, intermediate_90_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_91_data = (float*)(workspace + 56623104);
@@ -1563,7 +1563,7 @@ extern "C" void executeGraph(
   // Pool: large_pool_3, Offset: 75497472, Size: 18874368 bytes
   float* intermediate_102_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_102_tensor = {intermediate_102_data, intermediate_102_shape, 3};
-  float* intermediate_103_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_829c1999-4716-42fc-9bfe-cb10856f5151:output
+  float* intermediate_103_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_44cc4170-67a5-4b21-88a0-6ffc58122944:output
   Tensor<float> intermediate_103_tensor = {intermediate_103_data, intermediate_103_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_104_data = (float*)(workspace + 56623104);
@@ -1571,12 +1571,12 @@ extern "C" void executeGraph(
   // Pool: small_pool_0, Offset: 132120576, Size: 196608 bytes
   float* intermediate_105_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_105_tensor = {intermediate_105_data, intermediate_105_shape, 2};
-  float* intermediate_106_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_9d9da0ad-39f2-46eb-bbb5-389f108d95da:output
+  float* intermediate_106_data = (float*)(workspace + 132120576); // In-place reuse of cudanode_2816a995-00a6-4a39-8645-195ea85e3b47:output
   Tensor<float> intermediate_106_tensor = {intermediate_106_data, intermediate_106_shape, 2};
   // Pool: small_pool_1, Offset: 132317184, Size: 49152 bytes
   float* intermediate_107_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_107_tensor = {intermediate_107_data, intermediate_107_shape, 2};
-  float* intermediate_108_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_7f39f9d7-ef38-4a71-ba89-4e0f0e36f012:output
+  float* intermediate_108_data = (float*)(workspace + 56623104); // In-place reuse of cudanode_d15552c9-6020-4164-8cbb-336e921225e1:output
   Tensor<float> intermediate_108_tensor = {intermediate_108_data, intermediate_108_shape, 3};
   // Pool: large_pool_2, Offset: 56623104, Size: 18874368 bytes
   float* intermediate_109_data = (float*)(workspace + 56623104);
@@ -1706,7 +1706,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(1, 32), dim3(128, 1, 1), 0>>>(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(1, 32), dim3(128, 1, 1), 0>>>(intermediate_9_tensor, intermediate_8_tensor);
+  fused_scale_softmax_forward<<<dim3(128, 6, 32), dim3(128, 1, 1), 512>>>(intermediate_9_tensor, intermediate_8_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1742,7 +1742,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_27_tensor, intermediate_26_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_27_tensor, intermediate_26_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1778,7 +1778,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_44_tensor, intermediate_41_tensor, intermediate_42_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_45_tensor, intermediate_44_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_45_tensor, intermediate_44_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_46_tensor, intermediate_45_tensor, intermediate_43_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1814,7 +1814,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_62_tensor, intermediate_59_tensor, intermediate_60_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_63_tensor, intermediate_62_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_63_tensor, intermediate_62_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_64_tensor, intermediate_63_tensor, intermediate_61_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1850,7 +1850,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_80_tensor, intermediate_77_tensor, intermediate_78_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_81_tensor, intermediate_80_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_81_tensor, intermediate_80_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_82_tensor, intermediate_81_tensor, intermediate_79_tensor);
   CUDA_CHECK(cudaGetLastError());
@@ -1886,7 +1886,7 @@ extern "C" void executeGraph(
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_transpose_b_tiled<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_98_tensor, intermediate_95_tensor, intermediate_96_tensor);
   CUDA_CHECK(cudaGetLastError());
-  fused_scale_softmax_forward<<<dim3(2, 32), dim3(256, 1, 1), 0>>>(intermediate_99_tensor, intermediate_98_tensor);
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(intermediate_99_tensor, intermediate_98_tensor);
   CUDA_CHECK(cudaGetLastError());
   batched_matmul_tiled<<<dim3(1, 32), dim3(64, 1, 1), 0>>>(intermediate_100_tensor, intermediate_99_tensor, intermediate_97_tensor);
   CUDA_CHECK(cudaGetLastError());
