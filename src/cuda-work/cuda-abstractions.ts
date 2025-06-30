@@ -54,9 +54,10 @@ export interface CudaRuntime {
   /**
    * Compiles a string of CUDA C++ code into a launchable kernel.
    * @param kernelCode - The CUDA C++ source code.
+   * @param filename - The name of the file being compiled.
    * @returns A promise that resolves to a CudaKernel object.
    */
-  compile(kernelCode: string): Promise<CudaKernel>;
+  compile(kernelCode: string, filename: string): Promise<CudaKernel>;
 
   /**
    * Allocates a block of memory on the GPU.
@@ -130,9 +131,14 @@ export class MockCudaRuntime implements CudaRuntime {
   private nextKernelId = 0;
   private memory = new Map<string, Buffer>();
 
-  async compile(kernelCode: string): Promise<CudaKernel> {
+  async compile(kernelCode: string, filename: string): Promise<CudaKernel> {
     const kernelId = `mock_kernel_${this.nextKernelId++}`;
     console.log(`[MockCudaRuntime] Compiling kernel ${kernelId}:\n--- KERNEL CODE ---\n${kernelCode}\n--------------------`);
+    
+    // In a real implementation, we would save the kernel code to the specified filename
+    // For the mock, we can just log it.
+    console.log(`Kernel code written to ${filename}`);
+    
     return {
       id: kernelId,
       launch: async (grid, block, shared, args) => {

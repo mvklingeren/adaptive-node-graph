@@ -37,7 +37,7 @@ async function main() {
 
   console.log("\nBuilding a simple Neural Graph...");
   // 1. Create a new NeuralGraph.
-  const model = new NeuralGraph("SimpleMLP");
+  const model = new NeuralGraph("test-neural-graph");
   
   // 2. Define batch size
   const batchSize = 64;
@@ -81,7 +81,7 @@ async function main() {
   // the MockCudaRuntime, so we can see the output in the console.
 
   // 6. Write the generated kernel code to a file for inspection and compilation.
-  const outputPath = path.join(process.cwd(), 'generated-kernel.cu');
+  const outputPath = path.join(process.cwd(), "generated-test-neural-graph-kernel.cu");
   fs.writeFileSync(outputPath, kernelCode);
   console.log(`\nKernel code written to ${outputPath}`);
 

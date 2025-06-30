@@ -296,8 +296,8 @@ export class CudaGraphCompiler {
 
     this._setAndPropagateShapes(graph, inputShapes);
 
-    const { kernelCode, workspaceSize } = this.generateKernelCode(graph, paramNames, paramNameMapping);
-    const kernel = await this.runtime.compile(kernelCode); 
+    const { kernelCode, workspaceSize, filename } = this.generateKernelCode(graph, paramNames, paramNameMapping);
+    const kernel = await this.runtime.compile(kernelCode, filename); 
     
     return { kernel, parameters: orderedParams, kernelCode, workspaceSize };
   }
@@ -386,8 +386,9 @@ export class CudaGraphCompiler {
     }
 }
 
-  generateKernelCode(graph: CudaGraph, paramNames: string[], paramNameMapping: Map<string, string>): { kernelCode: string, workspaceSize: number } {
+  generateKernelCode(graph: CudaGraph, paramNames: string[], paramNameMapping: Map<string, string>): { kernelCode: string, workspaceSize: number, filename: string } {
     const executionOrder = graph.getExecutionOrder();
+    const filename = `generated-${graph.name}-kernel.cu`;
     
     const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
 
@@ -603,6 +604,7 @@ struct Tensor {
     const kernelCode = `
 #include <cuda_runtime.h>
 #include <cfloat>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -706,7 +708,7 @@ ${executionCalls.join("\n")}
 }
     `;
 
-    return { kernelCode, workspaceSize };
+    return { kernelCode, workspaceSize, filename };
   }
 
   private getGraphOutputs(graph: CudaGraph): Map<string, { node: CudaNode; port: string }> {

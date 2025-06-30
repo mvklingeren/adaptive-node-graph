@@ -1,6 +1,7 @@
 
 #include <cuda_runtime.h>
 #include <cfloat>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

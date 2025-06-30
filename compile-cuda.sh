@@ -55,5 +55,5 @@ else
   node dist/$FILE_NAME.js
 fi
 
-# Compile the generated CUDA code
-./compile-and-extract.sh
+# Compile the generated CUDA code, passing the filename
+./compile-and-extract.sh --file=$FILE_NAME
