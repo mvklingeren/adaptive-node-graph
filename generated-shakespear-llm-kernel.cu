@@ -1147,8 +1147,8 @@ extern "C" void executeGraph(
    return;
  }
  
- if (workspace_size < 124570829) {
-   fprintf(stderr, "Error: Insufficient workspace size. Required: 124570829 bytes, Provided: %zu bytes\n", workspace_size);
+ if (workspace_size < 385037108) {
+   fprintf(stderr, "Error: Insufficient workspace size. Required: 385037108 bytes, Provided: %zu bytes\n", workspace_size);
    return;
  }
  
@@ -1269,338 +1269,782 @@ extern "C" void executeGraph(
   const int intermediate_110_shape[] = {32, 65};
 
  // --- Tensor Struct Instantiation ---
-  // Pool: pool_cudanode_059e173c-1752-4e73-8216-52a27e222b26:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_c01ac639-d2ec-4030-97be-0817049e7ad3:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_0 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_0_data = (float*)(workspace + 0);
   Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 3};
-  // Pool: pool_cudanode_6c2d2490-d02d-4e34-8746-971b566c429e:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_1_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2f852d01-cb39-47e9-9d08-164f8b467f58:output, Offset: 6291456, Size: 6291456 bytes
+  if (6291456 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_1 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_1_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 3};
-  // Pool: pool_cudanode_fb8106b9-567f-4d0d-87df-267b54ec75ed:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_a730d3de-3ad4-48a7-b014-c215c1f7d990:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_2 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_2_data = (float*)(workspace + 0);
   Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 3};
-  // Pool: pool_cudanode_b1f6f00d-77ce-4938-9a93-a2b03bd56a2b:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_3_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_920df200-336a-4485-bd82-736e17a8995b:output, Offset: 12582912, Size: 6291456 bytes
+  if (12582912 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_3 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_3_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_3_tensor = {intermediate_3_data, intermediate_3_shape, 3};
-  // Pool: pool_cudanode_6b20deb4-f86e-4017-8079-c10dd8384a2c:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_4_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_5f338be8-a44e-4ab7-b5a5-48827b1d05c3:output, Offset: 18874368, Size: 6291456 bytes
+  if (18874368 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_4 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_4_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_4_tensor = {intermediate_4_data, intermediate_4_shape, 3};
-  // Pool: pool_cudanode_83ae74ad-7e0f-4869-ab7a-12d57128702f:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_5_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_9a98bca6-c0dc-43a5-aa23-c5be89d6ca0f:output, Offset: 25165824, Size: 6291456 bytes
+  if (25165824 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_5 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_5_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_5_tensor = {intermediate_5_data, intermediate_5_shape, 4};
-  // Pool: pool_cudanode_13d9dd52-e053-49f2-bcc2-8ba7b15acf1d:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_b0a06804-ff30-4162-945d-52b0ce6ea09c:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_6 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_6_data = (float*)(workspace + 0);
   Tensor<float> intermediate_6_tensor = {intermediate_6_data, intermediate_6_shape, 4};
-  // Pool: pool_cudanode_1c9d65af-8573-4b28-870c-d1dc51af93f4:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_7_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_dde896cf-2c98-4dbf-88db-4f7e50f853f3:output, Offset: 12582912, Size: 6291456 bytes
+  if (12582912 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_7 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_7_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_7_tensor = {intermediate_7_data, intermediate_7_shape, 4};
-  // Pool: pool_cudanode_2ddffe17-6339-4d00-8e27-76867eb87fc1:output, Offset: 0, Size: 12582912 bytes
-  float* intermediate_8_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_480f39f6-0b45-40c3-8973-61fa1071fa98:output, Offset: 31457280, Size: 12582912 bytes
+  if (31457280 + 12582912 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_8 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_8_data = (float*)(workspace + 31457280);
   Tensor<float> intermediate_8_tensor = {intermediate_8_data, intermediate_8_shape, 4};
-  // Pool: pool_cudanode_a6f8a5e1-1857-4900-bc7c-5427b20b61f1:output, Offset: 0, Size: 12582912 bytes
-  float* intermediate_9_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_c9753b35-c9fd-4fad-85d5-23b164064475:output, Offset: 18874368, Size: 12582912 bytes
+  if (18874368 + 12582912 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_9 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_9_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_9_tensor = {intermediate_9_data, intermediate_9_shape, 4};
-  // Pool: pool_cudanode_59835bd1-a1b0-420a-a0ba-00355d17643e:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_8abe17ee-fc53-4173-9f9c-fdc961c7e998:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_10 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_10_data = (float*)(workspace + 0);
   Tensor<float> intermediate_10_tensor = {intermediate_10_data, intermediate_10_shape, 4};
-  // Pool: pool_cudanode_c88656cd-a3f7-4c97-ad80-25676df95756:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_11_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_772396ed-beae-452b-bfda-ba6f0b79e1eb:output, Offset: 12582912, Size: 6291456 bytes
+  if (12582912 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_11 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_11_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 3};
-  // Pool: pool_cudanode_cbfbec5d-b42c-4921-831a-91054f80449b:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_86222547-81c0-4eca-94e0-91256636b242:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_12 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_12_data = (float*)(workspace + 0);
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
-  // Pool: pool_cudanode_d035f4a8-ab6c-4bb3-8e44-3250de1d4da7:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_13_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_71073168-cbf9-40a6-9d5d-4cd469be076b:output, Offset: 12582912, Size: 6291456 bytes
+  if (12582912 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_13 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_13_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_13_tensor = {intermediate_13_data, intermediate_13_shape, 3};
-  // Pool: pool_cudanode_9262ec54-04f5-49d2-ae38-dcbd15fe1b17:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_cc0cb662-2500-4bb6-825a-dc57b7169b6d:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_14 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_14_data = (float*)(workspace + 0);
   Tensor<float> intermediate_14_tensor = {intermediate_14_data, intermediate_14_shape, 3};
-  // Pool: pool_cudanode_e8690f2a-1602-463d-ac4d-b0e514f9bb76:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_15_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_e96c8294-4a69-4156-af08-3c3a56f076c7:output, Offset: 12582912, Size: 196608 bytes
+  if (12582912 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_15 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_15_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
-  // Pool: pool_cudanode_0bf2cd8b-fec3-4b75-b5aa-1c7ee481bf17:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_16_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_b2a4ab19-002a-4a1e-8b45-5a7401086d34:output, Offset: 12779520, Size: 196608 bytes
+  if (12779520 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_16 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_16_data = (float*)(workspace + 12779520);
   Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
-  // Pool: pool_cudanode_b61114bf-952a-432b-ad7b-a76bf13e078c:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_17_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_79703df6-147e-44c0-a14e-b8955de7a4d0:output, Offset: 12582912, Size: 49152 bytes
+  if (12582912 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_17 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_17_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  // Pool: pool_cudanode_a2004d86-1e29-41b8-bdc9-0281df3fa951:output, Offset: 0, Size: 6291456 bytes
-  float* intermediate_18_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_cc7d62cb-361e-4ca1-90f2-d9bd9700be6a:output, Offset: 12632064, Size: 6291456 bytes
+  if (12632064 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_18 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_18_data = (float*)(workspace + 12632064);
   Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
-  // Pool: pool_cudanode_8d929392-bdad-4022-96b8-c12702979f15:output, Offset: 0, Size: 6291456 bytes
+  // Pool: pool_cudanode_a49bf6ff-89cb-4e7b-9f38-50e5ac05be1f:output, Offset: 0, Size: 6291456 bytes
+  if (0 + 6291456 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_19 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_19_data = (float*)(workspace + 0);
   Tensor<float> intermediate_19_tensor = {intermediate_19_data, intermediate_19_shape, 3};
-  // Pool: pool_cudanode_4311ce1b-3d8f-48d4-a04f-a242271797ef:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_20_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_a13f36af-7c60-49da-9510-2c7c911e117d:output, Offset: 6291456, Size: 49152 bytes
+  if (6291456 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_20 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_20_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 2};
-  // Pool: pool_cudanode_486e5e74-13fd-44b7-898d-1ca6f91682bd:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_21_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_7ceb88d9-4549-437c-b7ad-9337da2de994:output, Offset: 6340608, Size: 49152 bytes
+  if (6340608 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_21 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_21_data = (float*)(workspace + 6340608);
   Tensor<float> intermediate_21_tensor = {intermediate_21_data, intermediate_21_shape, 2};
-  // Pool: pool_cudanode_d961f5f6-856a-4dcf-b419-b160a52921d8:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_22_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_e6670f7a-74ba-4b24-984e-9147076d3f0c:output, Offset: 6389760, Size: 49152 bytes
+  if (6389760 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_22 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_22_data = (float*)(workspace + 6389760);
   Tensor<float> intermediate_22_tensor = {intermediate_22_data, intermediate_22_shape, 2};
-  // Pool: pool_cudanode_6502eba9-6524-4831-b6bb-30d085bdff30:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_23_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_715ed22f-00ca-4e03-a6ec-79378a497b5a:output, Offset: 6438912, Size: 18874368 bytes
+  if (6438912 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_23 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_23_data = (float*)(workspace + 6438912);
   Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 4};
-  // Pool: pool_cudanode_ba390456-b1ad-4956-aca6-5100be11f8f7:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_24_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_9e9318cf-02ba-4796-bc5d-8d48b54c586a:output, Offset: 25313280, Size: 18874368 bytes
+  if (25313280 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_24 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_24_data = (float*)(workspace + 25313280);
   Tensor<float> intermediate_24_tensor = {intermediate_24_data, intermediate_24_shape, 4};
-  // Pool: pool_cudanode_cd35263f-01e0-4c84-bbd5-c8282280f8df:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_25_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_e900c553-7d1d-4ee4-854d-f4c97aa0cd33:output, Offset: 44187648, Size: 18874368 bytes
+  if (44187648 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_25 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_25_data = (float*)(workspace + 44187648);
   Tensor<float> intermediate_25_tensor = {intermediate_25_data, intermediate_25_shape, 4};
-  // Pool: pool_cudanode_9b71eddd-afc9-4727-99b9-8c881f58473a:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_26_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_5cdef2c7-51fb-459a-af5b-a85af766119b:output, Offset: 63062016, Size: 113246208 bytes
+  if (63062016 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_26 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_26_data = (float*)(workspace + 63062016);
   Tensor<float> intermediate_26_tensor = {intermediate_26_data, intermediate_26_shape, 4};
-  // Pool: pool_cudanode_f7816f69-f52f-4f01-907c-2a57c0afd9f7:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_27_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_373b2233-9935-4a38-9890-3f630581dcca:output, Offset: 176308224, Size: 113246208 bytes
+  if (176308224 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_27 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_27_data = (float*)(workspace + 176308224);
   Tensor<float> intermediate_27_tensor = {intermediate_27_data, intermediate_27_shape, 4};
-  // Pool: pool_cudanode_f0d96a9b-9d93-43fc-96f8-570e0913e5e6:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_28_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_e286e53f-b768-4777-ab85-0b727ab7edfa:output, Offset: 6291456, Size: 18874368 bytes
+  if (6291456 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_28 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_28_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_28_tensor = {intermediate_28_data, intermediate_28_shape, 4};
-  // Pool: pool_cudanode_1c3fe307-57e0-4739-a5bd-bf6615bc06b5:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_29_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_5a41ad50-0861-43cb-903f-ceb38e44ef28:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_29 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_29_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 3};
-  // Pool: pool_cudanode_5be35be9-edc3-4508-aece-c57eb6ddcff3:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_30_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_ea80482a-1fa3-40cd-90be-2250d9b94097:output, Offset: 6291456, Size: 18874368 bytes
+  if (6291456 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_30 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_30_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
-  // Pool: pool_cudanode_a5320114-c872-40ac-93e6-90be77f2a37c:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_31_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_b32e67ff-8e37-4172-afaf-00f8cf57a147:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_31 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_31_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
-  // Pool: pool_cudanode_283f1558-1734-4cf4-9662-3bd2c1632b33:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_32_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_26900a58-5fb4-4a54-9f00-d4057a496b95:output, Offset: 6291456, Size: 18874368 bytes
+  if (6291456 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_32 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_32_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_32_tensor = {intermediate_32_data, intermediate_32_shape, 3};
-  // Pool: pool_cudanode_7a05745c-a07f-47db-b47f-59d46cb0d8dc:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_33_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_64864788-ea01-4ed1-8f9b-db171e039c40:output, Offset: 25165824, Size: 196608 bytes
+  if (25165824 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_33 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_33_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
-  // Pool: pool_cudanode_ea3f9798-1cb2-4046-89d9-baee36f6a765:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_34_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_111ce0ac-4630-49ea-b49f-b14d75cdb690:output, Offset: 25362432, Size: 196608 bytes
+  if (25362432 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_34 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_34_data = (float*)(workspace + 25362432);
   Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
-  // Pool: pool_cudanode_3af4712d-c26f-4793-8b4c-5162769d2f3c:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_35_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_f08aa51a-cf5c-4ae6-b300-cdd604268222:output, Offset: 25165824, Size: 49152 bytes
+  if (25165824 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_35 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_35_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  // Pool: pool_cudanode_621192b0-a132-4247-895c-bfc7d5effde1:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_36_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_036abdb0-baed-4ca9-9c80-9a42ca6b92f7:output, Offset: 25214976, Size: 18874368 bytes
+  if (25214976 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_36 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_36_data = (float*)(workspace + 25214976);
   Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
-  // Pool: pool_cudanode_45e5bca3-90b9-4a74-8943-843180b414d2:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_37_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_3c55afec-60d7-409a-838c-e5bbcb8d5f32:output, Offset: 6291456, Size: 18874368 bytes
+  if (6291456 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_37 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_37_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 3};
-  // Pool: pool_cudanode_f89a6fa3-4725-4cce-802b-6e62d2d9930c:output, Offset: 0, Size: 49152 bytes
+  // Pool: pool_cudanode_6d62e4b5-4d41-4b4f-bf7c-62c28b2dbb04:output, Offset: 0, Size: 49152 bytes
+  if (0 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_38 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_38_data = (float*)(workspace + 0);
   Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 2};
-  // Pool: pool_cudanode_b78d6a3f-b21e-4e0e-9809-4c74ee9aef5a:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_39_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_533078a5-333d-494d-8fd0-f8e2f2af0fd4:output, Offset: 49152, Size: 49152 bytes
+  if (49152 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_39 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_39_data = (float*)(workspace + 49152);
   Tensor<float> intermediate_39_tensor = {intermediate_39_data, intermediate_39_shape, 2};
-  // Pool: pool_cudanode_dcd98c8e-954e-4207-bf6e-ad46477c673d:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_40_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_007880ea-1f8e-489f-91cb-003066bc5dc0:output, Offset: 98304, Size: 49152 bytes
+  if (98304 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_40 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_40_data = (float*)(workspace + 98304);
   Tensor<float> intermediate_40_tensor = {intermediate_40_data, intermediate_40_shape, 2};
-  // Pool: pool_cudanode_ca30f9fc-61fb-48ae-9505-e023dceec55f:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_41_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_712fe230-eb58-43d9-9922-2c9d7222079b:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_41 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_41_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_41_tensor = {intermediate_41_data, intermediate_41_shape, 4};
-  // Pool: pool_cudanode_843aeb90-be92-490a-87d7-7a02830833b2:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_42_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_4c150749-85c4-410e-9920-309d51c1a102:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_42 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_42_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_42_tensor = {intermediate_42_data, intermediate_42_shape, 4};
-  // Pool: pool_cudanode_d2e781f7-8868-44b9-aee8-818f7cedd3e8:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_43_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_a9ecefae-5273-44f0-abab-eccf88d770e9:output, Offset: 62914560, Size: 18874368 bytes
+  if (62914560 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_43 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_43_data = (float*)(workspace + 62914560);
   Tensor<float> intermediate_43_tensor = {intermediate_43_data, intermediate_43_shape, 4};
-  // Pool: pool_cudanode_26df9553-a2ce-4294-a950-e1889c6430c2:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_44_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_96b7f4f8-103d-41b1-ba04-adc06b3c3b8b:output, Offset: 81788928, Size: 113246208 bytes
+  if (81788928 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_44 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_44_data = (float*)(workspace + 81788928);
   Tensor<float> intermediate_44_tensor = {intermediate_44_data, intermediate_44_shape, 4};
-  // Pool: pool_cudanode_32909a66-166b-4ad6-bfaa-362a331d1300:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_45_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_09b2f7b6-1c24-41ad-8467-57291c1aabf9:output, Offset: 195035136, Size: 113246208 bytes
+  if (195035136 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_45 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_45_data = (float*)(workspace + 195035136);
   Tensor<float> intermediate_45_tensor = {intermediate_45_data, intermediate_45_shape, 4};
-  // Pool: pool_cudanode_7b556fe5-bd3e-4ff2-8452-a70c6b2836b9:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_46_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_644a3aa8-3654-48d2-b243-da4da0f875bb:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_46 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_46_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_46_tensor = {intermediate_46_data, intermediate_46_shape, 4};
-  // Pool: pool_cudanode_24cfdc13-8594-4368-b202-4ca5ac4ef0dd:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_47_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_fcb2e2f9-8d1b-4c3a-8da4-26d6b54bbad9:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_47 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_47_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_47_tensor = {intermediate_47_data, intermediate_47_shape, 3};
-  // Pool: pool_cudanode_8646936a-af8b-4d32-86f7-d62715f93c72:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_48_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_9525432d-4adb-42b5-b199-c65a467fa0ba:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_48 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_48_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_48_tensor = {intermediate_48_data, intermediate_48_shape, 3};
-  // Pool: pool_cudanode_bac326d6-5f9c-4488-b8c8-12eed1de79d2:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_49_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_37f2d04e-4102-42b4-8863-2c90df1a241e:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_49 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_49_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_49_tensor = {intermediate_49_data, intermediate_49_shape, 3};
-  // Pool: pool_cudanode_9a127f94-a5cb-4b6c-9185-81e828bb6fb9:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_50_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_8d09316a-1c9b-4afa-8d44-2746cf0a90d7:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_50 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_50_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_50_tensor = {intermediate_50_data, intermediate_50_shape, 3};
-  // Pool: pool_cudanode_e939003a-8d20-4f77-902c-3431e73b2a6d:output, Offset: 0, Size: 196608 bytes
+  // Pool: pool_cudanode_ffa29795-b6bb-4557-b7dc-f302e7974050:output, Offset: 0, Size: 196608 bytes
+  if (0 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_51 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_51_data = (float*)(workspace + 0);
   Tensor<float> intermediate_51_tensor = {intermediate_51_data, intermediate_51_shape, 2};
-  // Pool: pool_cudanode_b61df31d-aeae-4951-b134-8c54fbcb0928:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_52_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_d369437c-d8d7-4556-8dbf-ca4516c865fd:output, Offset: 196608, Size: 196608 bytes
+  if (196608 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_52 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_52_data = (float*)(workspace + 196608);
   Tensor<float> intermediate_52_tensor = {intermediate_52_data, intermediate_52_shape, 2};
-  // Pool: pool_cudanode_63822a96-7cd2-4c04-b6e7-e6feea67b15a:output, Offset: 0, Size: 49152 bytes
+  // Pool: pool_cudanode_9e8ecf46-c560-41b1-a6a5-b27e6e746e7c:output, Offset: 0, Size: 49152 bytes
+  if (0 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_53 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_53_data = (float*)(workspace + 0);
   Tensor<float> intermediate_53_tensor = {intermediate_53_data, intermediate_53_shape, 2};
-  // Pool: pool_cudanode_bd6805a3-c079-44c9-b278-e0973a084f52:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_54_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_ef5f5af4-6f1e-418f-af09-28a45ff2a56e:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_54 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_54_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_54_tensor = {intermediate_54_data, intermediate_54_shape, 3};
-  // Pool: pool_cudanode_5719821a-9fab-40dc-bbbd-2f304a81472d:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_55_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_0d51dcfa-d5f8-4fb5-aa15-afdcd27e49d0:output, Offset: 25165824, Size: 18874368 bytes
+  if (25165824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_55 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_55_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_55_tensor = {intermediate_55_data, intermediate_55_shape, 3};
-  // Pool: pool_cudanode_149367b5-7556-43c8-a458-b834aede940f:output, Offset: 0, Size: 49152 bytes
+  // Pool: pool_cudanode_729d4efd-55aa-4cdf-863b-9a76d066d070:output, Offset: 0, Size: 49152 bytes
+  if (0 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_56 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_56_data = (float*)(workspace + 0);
   Tensor<float> intermediate_56_tensor = {intermediate_56_data, intermediate_56_shape, 2};
-  // Pool: pool_cudanode_f4c53e3f-5e86-4faf-8317-93f141102063:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_57_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_a9afd941-ea3c-45f9-96bb-83269c1a44a8:output, Offset: 49152, Size: 49152 bytes
+  if (49152 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_57 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_57_data = (float*)(workspace + 49152);
   Tensor<float> intermediate_57_tensor = {intermediate_57_data, intermediate_57_shape, 2};
-  // Pool: pool_cudanode_8105a0f6-ec4e-4f67-aec5-24c1e72811ab:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_58_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_9caba94a-ad5d-48d3-83e9-079baa4573ec:output, Offset: 98304, Size: 49152 bytes
+  if (98304 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_58 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_58_data = (float*)(workspace + 98304);
   Tensor<float> intermediate_58_tensor = {intermediate_58_data, intermediate_58_shape, 2};
-  // Pool: pool_cudanode_ac719cbf-d854-4c7f-a836-6123970bd1df:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_59_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_8fab3b44-c22c-4493-8bd5-9f0df16be4f8:output, Offset: 147456, Size: 18874368 bytes
+  if (147456 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_59 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_59_data = (float*)(workspace + 147456);
   Tensor<float> intermediate_59_tensor = {intermediate_59_data, intermediate_59_shape, 4};
-  // Pool: pool_cudanode_a06cd3d3-58b7-486d-a82b-698edc3bab51:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_60_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_ac016f45-553c-4ff7-bb29-adcd3c755904:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_60 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_60_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_60_tensor = {intermediate_60_data, intermediate_60_shape, 4};
-  // Pool: pool_cudanode_1ec1ed4b-8947-4008-84f3-16b35763b02c:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_61_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_45de87fb-cc94-4b32-a36d-49b8fa3b3ca8:output, Offset: 62914560, Size: 18874368 bytes
+  if (62914560 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_61 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_61_data = (float*)(workspace + 62914560);
   Tensor<float> intermediate_61_tensor = {intermediate_61_data, intermediate_61_shape, 4};
-  // Pool: pool_cudanode_908a9e32-d063-47c8-8ed7-7c20f42c69b9:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_62_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2bfc85c7-88f1-41d6-80b8-b0c232f5aad9:output, Offset: 81788928, Size: 113246208 bytes
+  if (81788928 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_62 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_62_data = (float*)(workspace + 81788928);
   Tensor<float> intermediate_62_tensor = {intermediate_62_data, intermediate_62_shape, 4};
-  // Pool: pool_cudanode_147a689b-79a8-4347-bcd3-19cebc99ecba:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_63_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_12088688-9186-4f11-8b46-caf6a78ba9f0:output, Offset: 195035136, Size: 113246208 bytes
+  if (195035136 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_63 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_63_data = (float*)(workspace + 195035136);
   Tensor<float> intermediate_63_tensor = {intermediate_63_data, intermediate_63_shape, 4};
-  // Pool: pool_cudanode_72b37c07-eb65-4f82-ac52-7defc5af5be2:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_a4ace996-8145-484d-a07c-a0ce6daaa172:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_64 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_64_data = (float*)(workspace + 0);
   Tensor<float> intermediate_64_tensor = {intermediate_64_data, intermediate_64_shape, 4};
-  // Pool: pool_cudanode_387fd6a0-7703-4ab9-ad79-1f6f26c0143c:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_65_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_f5cfad2a-1e9b-44d3-9e39-765b5301f9bf:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_65 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_65_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_65_tensor = {intermediate_65_data, intermediate_65_shape, 3};
-  // Pool: pool_cudanode_068f8277-d067-4731-8fed-d83cfe816339:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_7595a36a-892e-4f63-ac3a-d1ca8c874851:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_66 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_66_data = (float*)(workspace + 0);
   Tensor<float> intermediate_66_tensor = {intermediate_66_data, intermediate_66_shape, 3};
-  // Pool: pool_cudanode_acc1833f-50ff-4853-beae-af59c0898d3d:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_67_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_b6aa5595-22d2-44f6-9c42-d0d4270435f1:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_67 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_67_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_67_tensor = {intermediate_67_data, intermediate_67_shape, 3};
-  // Pool: pool_cudanode_9f3a32be-5f11-4fec-ac5d-b15e63928ba3:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_4006090b-cd5c-45af-a178-77e6b69dcf0f:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_68 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_68_data = (float*)(workspace + 0);
   Tensor<float> intermediate_68_tensor = {intermediate_68_data, intermediate_68_shape, 3};
-  // Pool: pool_cudanode_ba7817bb-be95-4631-a718-e8397508d28d:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_69_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_26b4fe59-fd7c-41ce-88b2-d611c9e26460:output, Offset: 18874368, Size: 196608 bytes
+  if (18874368 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_69 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_69_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_69_tensor = {intermediate_69_data, intermediate_69_shape, 2};
-  // Pool: pool_cudanode_ef96a008-bcdd-4f07-8d6b-2daebe78364a:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_70_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2a6a1491-7bb9-43a8-bbec-abba1c565bc0:output, Offset: 19070976, Size: 196608 bytes
+  if (19070976 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_70 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_70_data = (float*)(workspace + 19070976);
   Tensor<float> intermediate_70_tensor = {intermediate_70_data, intermediate_70_shape, 2};
-  // Pool: pool_cudanode_81395e5e-6c85-4492-8355-07671d9b504e:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_71_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_06ed4c96-d204-496e-8494-5d4dc4788600:output, Offset: 18874368, Size: 49152 bytes
+  if (18874368 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_71 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_71_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_71_tensor = {intermediate_71_data, intermediate_71_shape, 2};
-  // Pool: pool_cudanode_c81458a9-c63e-4c2d-ba43-3e1f1803ace2:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_72_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2a31d8fc-0584-4764-8e63-d39decad024a:output, Offset: 44040192, Size: 18874368 bytes
+  if (44040192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_72 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_72_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_72_tensor = {intermediate_72_data, intermediate_72_shape, 3};
-  // Pool: pool_cudanode_b69c587a-a9f0-4bae-aaba-950682a9393b:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_d15f9588-5e81-4f91-9da8-c540f1a07580:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_73 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_73_data = (float*)(workspace + 0);
   Tensor<float> intermediate_73_tensor = {intermediate_73_data, intermediate_73_shape, 3};
-  // Pool: pool_cudanode_ee0fd822-f510-4c74-89b5-2afc3b52a02e:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_74_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_bf6a1da3-ea59-4c09-8ad3-180c404e172e:output, Offset: 18874368, Size: 49152 bytes
+  if (18874368 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_74 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_74_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_74_tensor = {intermediate_74_data, intermediate_74_shape, 2};
-  // Pool: pool_cudanode_d70d6123-b556-4772-88e3-be8e7375af7d:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_75_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_819a9792-bfb6-430d-a75d-7d1c5d03c201:output, Offset: 18923520, Size: 49152 bytes
+  if (18923520 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_75 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_75_data = (float*)(workspace + 18923520);
   Tensor<float> intermediate_75_tensor = {intermediate_75_data, intermediate_75_shape, 2};
-  // Pool: pool_cudanode_4f2a6c95-b72f-4223-8767-85a4e46ed2f5:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_76_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_fee42ae7-470a-45b8-92e0-a079a58283b6:output, Offset: 18972672, Size: 49152 bytes
+  if (18972672 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_76 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_76_data = (float*)(workspace + 18972672);
   Tensor<float> intermediate_76_tensor = {intermediate_76_data, intermediate_76_shape, 2};
-  // Pool: pool_cudanode_d9120ba3-fa31-4b34-af1d-630933aa7c6d:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_77_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_91cb39cf-f655-4a1c-8fe4-a1618f5204d5:output, Offset: 19021824, Size: 18874368 bytes
+  if (19021824 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_77 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_77_data = (float*)(workspace + 19021824);
   Tensor<float> intermediate_77_tensor = {intermediate_77_data, intermediate_77_shape, 4};
-  // Pool: pool_cudanode_b0bcbb90-aee0-44c1-a468-25ed5f4c97be:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_78_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_d5cd89ee-453b-4b82-a0bb-94e518267dea:output, Offset: 37896192, Size: 18874368 bytes
+  if (37896192 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_78 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_78_data = (float*)(workspace + 37896192);
   Tensor<float> intermediate_78_tensor = {intermediate_78_data, intermediate_78_shape, 4};
-  // Pool: pool_cudanode_b58e6aef-5ed5-4c86-943a-7b914a2dfb03:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_79_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_9397b645-781f-46ca-8ace-00cc1d616451:output, Offset: 56770560, Size: 18874368 bytes
+  if (56770560 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_79 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_79_data = (float*)(workspace + 56770560);
   Tensor<float> intermediate_79_tensor = {intermediate_79_data, intermediate_79_shape, 4};
-  // Pool: pool_cudanode_feca03ef-2058-4186-b296-72a9f7af2eca:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_80_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_e53290e3-5411-47ca-b3a0-f18f7bbde595:output, Offset: 75644928, Size: 113246208 bytes
+  if (75644928 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_80 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_80_data = (float*)(workspace + 75644928);
   Tensor<float> intermediate_80_tensor = {intermediate_80_data, intermediate_80_shape, 4};
-  // Pool: pool_cudanode_f2463b9c-96ba-4ffd-b051-c1c78657b273:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_81_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2666408f-84f2-4f0a-b7a2-519b6a122091:output, Offset: 188891136, Size: 113246208 bytes
+  if (188891136 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_81 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_81_data = (float*)(workspace + 188891136);
   Tensor<float> intermediate_81_tensor = {intermediate_81_data, intermediate_81_shape, 4};
-  // Pool: pool_cudanode_a0e75741-f4d1-4f41-9ac4-c1fed0536636:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_82_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_3b23867d-5a52-4ddf-8ff8-b06754a5fe33:output, Offset: 18874368, Size: 18874368 bytes
+  if (18874368 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_82 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_82_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_82_tensor = {intermediate_82_data, intermediate_82_shape, 4};
-  // Pool: pool_cudanode_19bf6c2d-8a68-49c0-a3d5-f959b428b9fb:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_83_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_007c1c27-f60b-4d9e-9aa8-b6e21e4e4b71:output, Offset: 37748736, Size: 18874368 bytes
+  if (37748736 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_83 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_83_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_83_tensor = {intermediate_83_data, intermediate_83_shape, 3};
-  // Pool: pool_cudanode_73232bb8-bf5e-4ea4-8c7d-1dde71d79829:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_84_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_6e222449-dd85-440e-8149-290bc40ad4cd:output, Offset: 18874368, Size: 18874368 bytes
+  if (18874368 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_84 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_84_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_84_tensor = {intermediate_84_data, intermediate_84_shape, 3};
-  // Pool: pool_cudanode_4ad09fe3-099e-4f23-96f8-843d836f60e6:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_85_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_4b76ed18-ae84-4ed5-84ad-2f54bb10c3ef:output, Offset: 37748736, Size: 18874368 bytes
+  if (37748736 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_85 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_85_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_85_tensor = {intermediate_85_data, intermediate_85_shape, 3};
-  // Pool: pool_cudanode_1baa9426-e530-4bb0-b265-f3c992bb5fb0:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_86_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_eb1c672f-afa7-4146-80b5-87b9b24f23e8:output, Offset: 18874368, Size: 18874368 bytes
+  if (18874368 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_86 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_86_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_86_tensor = {intermediate_86_data, intermediate_86_shape, 3};
-  // Pool: pool_cudanode_f627cbb4-4ec8-4e66-8972-de0e4b3b97b7:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_87_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_4513721f-ecfc-4d98-bc38-312e8f7855fc:output, Offset: 37748736, Size: 196608 bytes
+  if (37748736 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_87 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_87_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_87_tensor = {intermediate_87_data, intermediate_87_shape, 2};
-  // Pool: pool_cudanode_81939118-5b65-4845-b596-8a035f8c8d74:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_88_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_cd32ca3b-fb0e-4ac0-94ec-302f9a8e2420:output, Offset: 37945344, Size: 196608 bytes
+  if (37945344 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_88 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_88_data = (float*)(workspace + 37945344);
   Tensor<float> intermediate_88_tensor = {intermediate_88_data, intermediate_88_shape, 2};
-  // Pool: pool_cudanode_d198f4f7-a85e-4a43-981d-4f18e90be8d7:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_89_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_0995a83a-ef44-408c-a19b-cca2ca5fc7b3:output, Offset: 37748736, Size: 49152 bytes
+  if (37748736 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_89 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_89_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_89_tensor = {intermediate_89_data, intermediate_89_shape, 2};
-  // Pool: pool_cudanode_0fa279e5-71a5-4334-ad01-b2e38ed1285a:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_90_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_74986e54-65d8-470b-8f71-c639dbf452d4:output, Offset: 37797888, Size: 18874368 bytes
+  if (37797888 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_90 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_90_data = (float*)(workspace + 37797888);
   Tensor<float> intermediate_90_tensor = {intermediate_90_data, intermediate_90_shape, 3};
-  // Pool: pool_cudanode_364a24af-75fd-4ce6-aa4b-fabd81e85aea:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_91_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_2899bbf3-598c-4e08-ac51-97281d2e5eb3:output, Offset: 18874368, Size: 18874368 bytes
+  if (18874368 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_91 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_91_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_91_tensor = {intermediate_91_data, intermediate_91_shape, 3};
-  // Pool: pool_cudanode_63f44038-8e75-44d4-b98d-8b0de642f646:output, Offset: 0, Size: 49152 bytes
+  // Pool: pool_cudanode_b39f544e-91c1-4199-9d4e-8757ecc86595:output, Offset: 0, Size: 49152 bytes
+  if (0 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_92 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_92_data = (float*)(workspace + 0);
   Tensor<float> intermediate_92_tensor = {intermediate_92_data, intermediate_92_shape, 2};
-  // Pool: pool_cudanode_f66d75ad-0e19-4fc9-bb3e-0bf7608676fe:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_93_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_4aa56f51-2879-4cc7-a6a9-cf90594902be:output, Offset: 49152, Size: 49152 bytes
+  if (49152 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_93 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_93_data = (float*)(workspace + 49152);
   Tensor<float> intermediate_93_tensor = {intermediate_93_data, intermediate_93_shape, 2};
-  // Pool: pool_cudanode_9f3737b8-78dc-46d2-bb0b-df127e269c96:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_94_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_7c01dc08-adcf-4aa1-a332-b7c6a3360e24:output, Offset: 98304, Size: 49152 bytes
+  if (98304 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_94 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_94_data = (float*)(workspace + 98304);
   Tensor<float> intermediate_94_tensor = {intermediate_94_data, intermediate_94_shape, 2};
-  // Pool: pool_cudanode_6b5b8e23-b557-47a4-b74a-97b97057e965:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_95_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_4f551eeb-0779-454e-b753-be15453832f8:output, Offset: 37748736, Size: 18874368 bytes
+  if (37748736 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_95 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_95_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_95_tensor = {intermediate_95_data, intermediate_95_shape, 4};
-  // Pool: pool_cudanode_a93ddc09-f0f5-4be6-a51e-0b89e7f6694e:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_96_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_6365a618-2b4d-4537-a0fb-d4cd68ce9a33:output, Offset: 56623104, Size: 18874368 bytes
+  if (56623104 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_96 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_96_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_96_tensor = {intermediate_96_data, intermediate_96_shape, 4};
-  // Pool: pool_cudanode_7b9f4c41-99e5-4666-85f9-ce97f8507b18:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_97_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_05dbdf76-11ed-4c31-b4ab-04bb37ece482:output, Offset: 75497472, Size: 18874368 bytes
+  if (75497472 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_97 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_97_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_97_tensor = {intermediate_97_data, intermediate_97_shape, 4};
-  // Pool: pool_cudanode_c1edd451-d4a1-4176-8c0d-35e8c511b613:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_98_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_40a99402-778e-4e07-9ca4-5ef568991a18:output, Offset: 94371840, Size: 113246208 bytes
+  if (94371840 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_98 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_98_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_98_tensor = {intermediate_98_data, intermediate_98_shape, 4};
-  // Pool: pool_cudanode_ba63550e-403a-460a-acfa-b6ba58350de0:output, Offset: 0, Size: 113246208 bytes
-  float* intermediate_99_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_8c7131e3-a5f9-43ce-976d-ea66748d4aa8:output, Offset: 207618048, Size: 113246208 bytes
+  if (207618048 + 113246208 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_99 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_99_data = (float*)(workspace + 207618048);
   Tensor<float> intermediate_99_tensor = {intermediate_99_data, intermediate_99_shape, 4};
-  // Pool: pool_cudanode_1e9d4040-ea53-47ff-bb36-c952c3b53bae:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_0dc2a071-4939-4dfd-af1c-186d54fc7d7e:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_100 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_100_data = (float*)(workspace + 0);
   Tensor<float> intermediate_100_tensor = {intermediate_100_data, intermediate_100_shape, 4};
-  // Pool: pool_cudanode_defc66e7-53ec-48b3-8bef-73632d53c897:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_101_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_1ad4e7e7-11b4-4da8-93f9-9016c32137b7:output, Offset: 37748736, Size: 18874368 bytes
+  if (37748736 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_101 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_101_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_101_tensor = {intermediate_101_data, intermediate_101_shape, 3};
-  // Pool: pool_cudanode_f17d752b-ce82-4ee6-b25c-08925ed71a77:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_55971e5d-749d-40cc-95d8-daddda9fe151:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_102 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_102_data = (float*)(workspace + 0);
   Tensor<float> intermediate_102_tensor = {intermediate_102_data, intermediate_102_shape, 3};
-  // Pool: pool_cudanode_e1512e19-ba6e-4d7d-8010-b1e9f94b04d7:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_103_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_60edca54-ebf6-4e7b-b425-e5e65f255193:output, Offset: 37748736, Size: 18874368 bytes
+  if (37748736 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_103 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_103_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_103_tensor = {intermediate_103_data, intermediate_103_shape, 3};
-  // Pool: pool_cudanode_c8a04941-e2e8-4eac-ba5e-f781ed9bd079:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_f273b899-e6e3-4f30-9312-0fe8a70f1ee3:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_104 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_104_data = (float*)(workspace + 0);
   Tensor<float> intermediate_104_tensor = {intermediate_104_data, intermediate_104_shape, 3};
-  // Pool: pool_cudanode_3ff600c7-f060-418e-824c-4567003114cb:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_105_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_19f595d7-3985-4a36-a608-a09d9d66c38e:output, Offset: 37748736, Size: 196608 bytes
+  if (37748736 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_105 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_105_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_105_tensor = {intermediate_105_data, intermediate_105_shape, 2};
-  // Pool: pool_cudanode_a0f5c7fc-0726-4a7a-a1fe-06798675c0ae:output, Offset: 0, Size: 196608 bytes
-  float* intermediate_106_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_1776b38c-d254-4166-8cbd-2f11e35d184a:output, Offset: 37945344, Size: 196608 bytes
+  if (37945344 + 196608 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_106 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_106_data = (float*)(workspace + 37945344);
   Tensor<float> intermediate_106_tensor = {intermediate_106_data, intermediate_106_shape, 2};
-  // Pool: pool_cudanode_4dea81af-80ac-48e6-a0b9-c4a419f07f87:output, Offset: 0, Size: 49152 bytes
-  float* intermediate_107_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_b99d2583-1022-4d41-a3a5-e4e31ebbba50:output, Offset: 37748736, Size: 49152 bytes
+  if (37748736 + 49152 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_107 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_107_data = (float*)(workspace + 37748736);
   Tensor<float> intermediate_107_tensor = {intermediate_107_data, intermediate_107_shape, 2};
-  // Pool: pool_cudanode_36951258-4366-4065-a68c-5c9116ad3d16:output, Offset: 0, Size: 18874368 bytes
-  float* intermediate_108_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_29b81638-d4df-43b9-a067-c6f6e44ee929:output, Offset: 37797888, Size: 18874368 bytes
+  if (37797888 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_108 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_108_data = (float*)(workspace + 37797888);
   Tensor<float> intermediate_108_tensor = {intermediate_108_data, intermediate_108_shape, 3};
-  // Pool: pool_cudanode_899e6306-8d9d-4a19-a061-703fe3b62985:output, Offset: 0, Size: 18874368 bytes
+  // Pool: pool_cudanode_c6b61f55-177f-4ee9-b9bb-be0a53be4af9:output, Offset: 0, Size: 18874368 bytes
+  if (0 + 18874368 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_109 allocation would exceed workspace bounds\n");
+    return;
+  }
   float* intermediate_109_data = (float*)(workspace + 0);
   Tensor<float> intermediate_109_tensor = {intermediate_109_data, intermediate_109_shape, 3};
-  // Pool: pool_cudanode_2c8f4f73-75d8-44c8-b939-6597f1bdc562:output, Offset: 0, Size: 8320 bytes
-  float* intermediate_110_data = (float*)(workspace + 0);
+  // Pool: pool_cudanode_c7897e3b-8e62-4b2a-91a9-6a88c9758f38:output, Offset: 18874368, Size: 8320 bytes
+  if (18874368 + 8320 > workspace_size) {
+    fprintf(stderr, "Error: Tensor intermediate_110 allocation would exceed workspace bounds\n");
+    return;
+  }
+  float* intermediate_110_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_110_tensor = {intermediate_110_data, intermediate_110_shape, 2};
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
