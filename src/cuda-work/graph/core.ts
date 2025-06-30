@@ -121,7 +121,7 @@ export class CudaNode {
     );
 
     const allArgs = [...outputArgs, ...inputArgs, ...paramArgs].join(", ");
-    return `${this.functionName}(${allArgs});`;
+    return `(${allArgs});`;
   }
 }
 

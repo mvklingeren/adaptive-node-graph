@@ -115,6 +115,7 @@ public:
     WorkspaceAllocator(char* workspace, size_t workspace_size) 
         : base_ptr(workspace), current_offset(0), total_size(workspace_size) {}
     
+    // Sequential allocation (for fallback cases)
     void* allocate(size_t size) {
         size_t aligned_size = align_to_boundary(size);
         
@@ -127,6 +128,19 @@ public:
         void* ptr = base_ptr + current_offset;
         current_offset += aligned_size;
         return ptr;
+    }
+    
+    // Direct offset allocation (for memory reuse)
+    void* allocate_at_offset(size_t offset, size_t size) {
+        size_t aligned_size = align_to_boundary(size);
+        
+        if (offset + aligned_size > total_size) {
+            fprintf(stderr, "ERROR: Offset allocation out of bounds. Offset: %zu, Size: %zu (aligned: %zu), Total: %zu\n", 
+                    offset, size, aligned_size, total_size);
+            return nullptr;
+        }
+        
+        return base_ptr + offset;
     }
     
     size_t get_used_size() const {
@@ -851,8 +865,8 @@ extern "C" void executeGraph(
         return;
     }
     
-    if (workspace_size < 119537664) {
-        fprintf(stderr, "Error: Insufficient workspace size. Required: 119537664 bytes, Provided: %zu bytes\n", workspace_size);
+    if (workspace_size < 320864256) {
+        fprintf(stderr, "Error: Insufficient workspace size. Required: 320864256 bytes, Provided: %zu bytes\n", workspace_size);
         return;
     }
     
@@ -985,564 +999,564 @@ extern "C" void executeGraph(
     }
 
   // Pool: default, Offset: 0, Size: 6291456 bytes
-  float* intermediate_0_data = (float*)(allocator.allocate(6291456));
+  float* intermediate_0_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 3};
   // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_1_data = (float*)(allocator.allocate(6291456));
+  float* intermediate_1_data = (float*)(allocator.allocate_at_offset(6291456, 6291456));
   Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_2_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_2_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_3_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 12582912, Size: 6291456 bytes
+  float* intermediate_3_data = (float*)(allocator.allocate_at_offset(12582912, 6291456));
   Tensor<float> intermediate_3_tensor = {intermediate_3_data, intermediate_3_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_4_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 18874368, Size: 6291456 bytes
+  float* intermediate_4_data = (float*)(allocator.allocate_at_offset(18874368, 6291456));
   Tensor<float> intermediate_4_tensor = {intermediate_4_data, intermediate_4_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_5_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 25165824, Size: 6291456 bytes
+  float* intermediate_5_data = (float*)(allocator.allocate_at_offset(25165824, 6291456));
   Tensor<float> intermediate_5_tensor = {intermediate_5_data, intermediate_5_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_6_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_6_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_6_tensor = {intermediate_6_data, intermediate_6_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_7_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 12582912, Size: 6291456 bytes
+  float* intermediate_7_data = (float*)(allocator.allocate_at_offset(12582912, 6291456));
   Tensor<float> intermediate_7_tensor = {intermediate_7_data, intermediate_7_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 12582912 bytes
-  float* intermediate_8_data = (float*)(allocator.allocate(12582912));
+  // Pool: default, Offset: 31457280, Size: 12582912 bytes
+  float* intermediate_8_data = (float*)(allocator.allocate_at_offset(31457280, 12582912));
   Tensor<float> intermediate_8_tensor = {intermediate_8_data, intermediate_8_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 12582912 bytes
-  float* intermediate_9_data = (float*)(allocator.allocate(12582912));
+  // Pool: default, Offset: 18874368, Size: 12582912 bytes
+  float* intermediate_9_data = (float*)(allocator.allocate_at_offset(18874368, 12582912));
   Tensor<float> intermediate_9_tensor = {intermediate_9_data, intermediate_9_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_10_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_10_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_10_tensor = {intermediate_10_data, intermediate_10_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_11_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 12582912, Size: 6291456 bytes
+  float* intermediate_11_data = (float*)(allocator.allocate_at_offset(12582912, 6291456));
   Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_12_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_12_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_13_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 12582912, Size: 6291456 bytes
+  float* intermediate_13_data = (float*)(allocator.allocate_at_offset(12582912, 6291456));
   Tensor<float> intermediate_13_tensor = {intermediate_13_data, intermediate_13_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_14_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_14_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_14_tensor = {intermediate_14_data, intermediate_14_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_15_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 12582912, Size: 196608 bytes
+  float* intermediate_15_data = (float*)(allocator.allocate_at_offset(12582912, 196608));
   Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_16_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 12779520, Size: 196608 bytes
+  float* intermediate_16_data = (float*)(allocator.allocate_at_offset(12779520, 196608));
   Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_17_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 12582912, Size: 49152 bytes
+  float* intermediate_17_data = (float*)(allocator.allocate_at_offset(12582912, 49152));
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_18_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 12632064, Size: 6291456 bytes
+  float* intermediate_18_data = (float*)(allocator.allocate_at_offset(12632064, 6291456));
   Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 6291456 bytes
-  float* intermediate_19_data = (float*)(allocator.allocate(6291456));
+  // Pool: default, Offset: 0, Size: 6291456 bytes
+  float* intermediate_19_data = (float*)(allocator.allocate_at_offset(0, 6291456));
   Tensor<float> intermediate_19_tensor = {intermediate_19_data, intermediate_19_shape, 3};
   // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_20_data = (float*)(allocator.allocate(49152));
+  float* intermediate_20_data = (float*)(allocator.allocate_at_offset(6291456, 49152));
   Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_21_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 6340608, Size: 49152 bytes
+  float* intermediate_21_data = (float*)(allocator.allocate_at_offset(6340608, 49152));
   Tensor<float> intermediate_21_tensor = {intermediate_21_data, intermediate_21_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_22_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 6389760, Size: 49152 bytes
+  float* intermediate_22_data = (float*)(allocator.allocate_at_offset(6389760, 49152));
   Tensor<float> intermediate_22_tensor = {intermediate_22_data, intermediate_22_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_23_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 6438912, Size: 18874368 bytes
+  float* intermediate_23_data = (float*)(allocator.allocate_at_offset(6438912, 18874368));
   Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_24_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25313280, Size: 18874368 bytes
+  float* intermediate_24_data = (float*)(allocator.allocate_at_offset(25313280, 18874368));
   Tensor<float> intermediate_24_tensor = {intermediate_24_data, intermediate_24_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_25_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44187648, Size: 18874368 bytes
+  float* intermediate_25_data = (float*)(allocator.allocate_at_offset(44187648, 18874368));
   Tensor<float> intermediate_25_tensor = {intermediate_25_data, intermediate_25_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_26_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 63062016, Size: 113246208 bytes
+  float* intermediate_26_data = (float*)(allocator.allocate_at_offset(63062016, 113246208));
   Tensor<float> intermediate_26_tensor = {intermediate_26_data, intermediate_26_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_27_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 176308224, Size: 113246208 bytes
+  float* intermediate_27_data = (float*)(allocator.allocate_at_offset(176308224, 113246208));
   Tensor<float> intermediate_27_tensor = {intermediate_27_data, intermediate_27_shape, 4};
   // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_28_data = (float*)(allocator.allocate(18874368));
+  float* intermediate_28_data = (float*)(allocator.allocate_at_offset(6291456, 18874368));
   Tensor<float> intermediate_28_tensor = {intermediate_28_data, intermediate_28_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_29_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_29_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 3};
   // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_30_data = (float*)(allocator.allocate(18874368));
+  float* intermediate_30_data = (float*)(allocator.allocate_at_offset(6291456, 18874368));
   Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_31_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_31_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
   // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_32_data = (float*)(allocator.allocate(18874368));
+  float* intermediate_32_data = (float*)(allocator.allocate_at_offset(6291456, 18874368));
   Tensor<float> intermediate_32_tensor = {intermediate_32_data, intermediate_32_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_33_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 25165824, Size: 196608 bytes
+  float* intermediate_33_data = (float*)(allocator.allocate_at_offset(25165824, 196608));
   Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_34_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 25362432, Size: 196608 bytes
+  float* intermediate_34_data = (float*)(allocator.allocate_at_offset(25362432, 196608));
   Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_35_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 25165824, Size: 49152 bytes
+  float* intermediate_35_data = (float*)(allocator.allocate_at_offset(25165824, 49152));
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_36_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25214976, Size: 18874368 bytes
+  float* intermediate_36_data = (float*)(allocator.allocate_at_offset(25214976, 18874368));
   Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
   // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_37_data = (float*)(allocator.allocate(18874368));
+  float* intermediate_37_data = (float*)(allocator.allocate_at_offset(6291456, 18874368));
   Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_38_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 0, Size: 49152 bytes
+  float* intermediate_38_data = (float*)(allocator.allocate_at_offset(0, 49152));
   Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_39_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 49152, Size: 49152 bytes
+  float* intermediate_39_data = (float*)(allocator.allocate_at_offset(49152, 49152));
   Tensor<float> intermediate_39_tensor = {intermediate_39_data, intermediate_39_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_40_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 98304, Size: 49152 bytes
+  float* intermediate_40_data = (float*)(allocator.allocate_at_offset(98304, 49152));
   Tensor<float> intermediate_40_tensor = {intermediate_40_data, intermediate_40_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_41_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_41_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_41_tensor = {intermediate_41_data, intermediate_41_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_42_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_42_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_42_tensor = {intermediate_42_data, intermediate_42_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_43_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 62914560, Size: 18874368 bytes
+  float* intermediate_43_data = (float*)(allocator.allocate_at_offset(62914560, 18874368));
   Tensor<float> intermediate_43_tensor = {intermediate_43_data, intermediate_43_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_44_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 81788928, Size: 113246208 bytes
+  float* intermediate_44_data = (float*)(allocator.allocate_at_offset(81788928, 113246208));
   Tensor<float> intermediate_44_tensor = {intermediate_44_data, intermediate_44_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_45_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 195035136, Size: 113246208 bytes
+  float* intermediate_45_data = (float*)(allocator.allocate_at_offset(195035136, 113246208));
   Tensor<float> intermediate_45_tensor = {intermediate_45_data, intermediate_45_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_46_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_46_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_46_tensor = {intermediate_46_data, intermediate_46_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_47_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_47_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_47_tensor = {intermediate_47_data, intermediate_47_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_48_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_48_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_48_tensor = {intermediate_48_data, intermediate_48_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_49_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_49_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_49_tensor = {intermediate_49_data, intermediate_49_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_50_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_50_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_50_tensor = {intermediate_50_data, intermediate_50_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_51_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 0, Size: 196608 bytes
+  float* intermediate_51_data = (float*)(allocator.allocate_at_offset(0, 196608));
   Tensor<float> intermediate_51_tensor = {intermediate_51_data, intermediate_51_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_52_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 196608, Size: 196608 bytes
+  float* intermediate_52_data = (float*)(allocator.allocate_at_offset(196608, 196608));
   Tensor<float> intermediate_52_tensor = {intermediate_52_data, intermediate_52_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_53_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 0, Size: 49152 bytes
+  float* intermediate_53_data = (float*)(allocator.allocate_at_offset(0, 49152));
   Tensor<float> intermediate_53_tensor = {intermediate_53_data, intermediate_53_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_54_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_54_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_54_tensor = {intermediate_54_data, intermediate_54_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_55_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 25165824, Size: 18874368 bytes
+  float* intermediate_55_data = (float*)(allocator.allocate_at_offset(25165824, 18874368));
   Tensor<float> intermediate_55_tensor = {intermediate_55_data, intermediate_55_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_56_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 0, Size: 49152 bytes
+  float* intermediate_56_data = (float*)(allocator.allocate_at_offset(0, 49152));
   Tensor<float> intermediate_56_tensor = {intermediate_56_data, intermediate_56_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_57_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 49152, Size: 49152 bytes
+  float* intermediate_57_data = (float*)(allocator.allocate_at_offset(49152, 49152));
   Tensor<float> intermediate_57_tensor = {intermediate_57_data, intermediate_57_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_58_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 98304, Size: 49152 bytes
+  float* intermediate_58_data = (float*)(allocator.allocate_at_offset(98304, 49152));
   Tensor<float> intermediate_58_tensor = {intermediate_58_data, intermediate_58_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_59_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 147456, Size: 18874368 bytes
+  float* intermediate_59_data = (float*)(allocator.allocate_at_offset(147456, 18874368));
   Tensor<float> intermediate_59_tensor = {intermediate_59_data, intermediate_59_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_60_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_60_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_60_tensor = {intermediate_60_data, intermediate_60_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_61_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 62914560, Size: 18874368 bytes
+  float* intermediate_61_data = (float*)(allocator.allocate_at_offset(62914560, 18874368));
   Tensor<float> intermediate_61_tensor = {intermediate_61_data, intermediate_61_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_62_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 81788928, Size: 113246208 bytes
+  float* intermediate_62_data = (float*)(allocator.allocate_at_offset(81788928, 113246208));
   Tensor<float> intermediate_62_tensor = {intermediate_62_data, intermediate_62_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_63_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 195035136, Size: 113246208 bytes
+  float* intermediate_63_data = (float*)(allocator.allocate_at_offset(195035136, 113246208));
   Tensor<float> intermediate_63_tensor = {intermediate_63_data, intermediate_63_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_64_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_64_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_64_tensor = {intermediate_64_data, intermediate_64_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_65_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_65_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_65_tensor = {intermediate_65_data, intermediate_65_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_66_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_66_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_66_tensor = {intermediate_66_data, intermediate_66_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_67_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_67_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_67_tensor = {intermediate_67_data, intermediate_67_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_68_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_68_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_68_tensor = {intermediate_68_data, intermediate_68_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_69_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 18874368, Size: 196608 bytes
+  float* intermediate_69_data = (float*)(allocator.allocate_at_offset(18874368, 196608));
   Tensor<float> intermediate_69_tensor = {intermediate_69_data, intermediate_69_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_70_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 19070976, Size: 196608 bytes
+  float* intermediate_70_data = (float*)(allocator.allocate_at_offset(19070976, 196608));
   Tensor<float> intermediate_70_tensor = {intermediate_70_data, intermediate_70_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_71_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 18874368, Size: 49152 bytes
+  float* intermediate_71_data = (float*)(allocator.allocate_at_offset(18874368, 49152));
   Tensor<float> intermediate_71_tensor = {intermediate_71_data, intermediate_71_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_72_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 44040192, Size: 18874368 bytes
+  float* intermediate_72_data = (float*)(allocator.allocate_at_offset(44040192, 18874368));
   Tensor<float> intermediate_72_tensor = {intermediate_72_data, intermediate_72_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_73_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_73_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_73_tensor = {intermediate_73_data, intermediate_73_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_74_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 18874368, Size: 49152 bytes
+  float* intermediate_74_data = (float*)(allocator.allocate_at_offset(18874368, 49152));
   Tensor<float> intermediate_74_tensor = {intermediate_74_data, intermediate_74_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_75_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 18923520, Size: 49152 bytes
+  float* intermediate_75_data = (float*)(allocator.allocate_at_offset(18923520, 49152));
   Tensor<float> intermediate_75_tensor = {intermediate_75_data, intermediate_75_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_76_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 18972672, Size: 49152 bytes
+  float* intermediate_76_data = (float*)(allocator.allocate_at_offset(18972672, 49152));
   Tensor<float> intermediate_76_tensor = {intermediate_76_data, intermediate_76_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_77_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 19021824, Size: 18874368 bytes
+  float* intermediate_77_data = (float*)(allocator.allocate_at_offset(19021824, 18874368));
   Tensor<float> intermediate_77_tensor = {intermediate_77_data, intermediate_77_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_78_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37896192, Size: 18874368 bytes
+  float* intermediate_78_data = (float*)(allocator.allocate_at_offset(37896192, 18874368));
   Tensor<float> intermediate_78_tensor = {intermediate_78_data, intermediate_78_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_79_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 56770560, Size: 18874368 bytes
+  float* intermediate_79_data = (float*)(allocator.allocate_at_offset(56770560, 18874368));
   Tensor<float> intermediate_79_tensor = {intermediate_79_data, intermediate_79_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_80_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 75644928, Size: 113246208 bytes
+  float* intermediate_80_data = (float*)(allocator.allocate_at_offset(75644928, 113246208));
   Tensor<float> intermediate_80_tensor = {intermediate_80_data, intermediate_80_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_81_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 188891136, Size: 113246208 bytes
+  float* intermediate_81_data = (float*)(allocator.allocate_at_offset(188891136, 113246208));
   Tensor<float> intermediate_81_tensor = {intermediate_81_data, intermediate_81_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_82_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 18874368, Size: 18874368 bytes
+  float* intermediate_82_data = (float*)(allocator.allocate_at_offset(18874368, 18874368));
   Tensor<float> intermediate_82_tensor = {intermediate_82_data, intermediate_82_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_83_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37748736, Size: 18874368 bytes
+  float* intermediate_83_data = (float*)(allocator.allocate_at_offset(37748736, 18874368));
   Tensor<float> intermediate_83_tensor = {intermediate_83_data, intermediate_83_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_84_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 18874368, Size: 18874368 bytes
+  float* intermediate_84_data = (float*)(allocator.allocate_at_offset(18874368, 18874368));
   Tensor<float> intermediate_84_tensor = {intermediate_84_data, intermediate_84_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_85_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37748736, Size: 18874368 bytes
+  float* intermediate_85_data = (float*)(allocator.allocate_at_offset(37748736, 18874368));
   Tensor<float> intermediate_85_tensor = {intermediate_85_data, intermediate_85_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_86_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 18874368, Size: 18874368 bytes
+  float* intermediate_86_data = (float*)(allocator.allocate_at_offset(18874368, 18874368));
   Tensor<float> intermediate_86_tensor = {intermediate_86_data, intermediate_86_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_87_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 37748736, Size: 196608 bytes
+  float* intermediate_87_data = (float*)(allocator.allocate_at_offset(37748736, 196608));
   Tensor<float> intermediate_87_tensor = {intermediate_87_data, intermediate_87_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_88_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 37945344, Size: 196608 bytes
+  float* intermediate_88_data = (float*)(allocator.allocate_at_offset(37945344, 196608));
   Tensor<float> intermediate_88_tensor = {intermediate_88_data, intermediate_88_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_89_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 37748736, Size: 49152 bytes
+  float* intermediate_89_data = (float*)(allocator.allocate_at_offset(37748736, 49152));
   Tensor<float> intermediate_89_tensor = {intermediate_89_data, intermediate_89_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_90_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37797888, Size: 18874368 bytes
+  float* intermediate_90_data = (float*)(allocator.allocate_at_offset(37797888, 18874368));
   Tensor<float> intermediate_90_tensor = {intermediate_90_data, intermediate_90_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_91_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 18874368, Size: 18874368 bytes
+  float* intermediate_91_data = (float*)(allocator.allocate_at_offset(18874368, 18874368));
   Tensor<float> intermediate_91_tensor = {intermediate_91_data, intermediate_91_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_92_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 0, Size: 49152 bytes
+  float* intermediate_92_data = (float*)(allocator.allocate_at_offset(0, 49152));
   Tensor<float> intermediate_92_tensor = {intermediate_92_data, intermediate_92_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_93_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 49152, Size: 49152 bytes
+  float* intermediate_93_data = (float*)(allocator.allocate_at_offset(49152, 49152));
   Tensor<float> intermediate_93_tensor = {intermediate_93_data, intermediate_93_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_94_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 98304, Size: 49152 bytes
+  float* intermediate_94_data = (float*)(allocator.allocate_at_offset(98304, 49152));
   Tensor<float> intermediate_94_tensor = {intermediate_94_data, intermediate_94_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_95_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37748736, Size: 18874368 bytes
+  float* intermediate_95_data = (float*)(allocator.allocate_at_offset(37748736, 18874368));
   Tensor<float> intermediate_95_tensor = {intermediate_95_data, intermediate_95_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_96_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 56623104, Size: 18874368 bytes
+  float* intermediate_96_data = (float*)(allocator.allocate_at_offset(56623104, 18874368));
   Tensor<float> intermediate_96_tensor = {intermediate_96_data, intermediate_96_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_97_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 75497472, Size: 18874368 bytes
+  float* intermediate_97_data = (float*)(allocator.allocate_at_offset(75497472, 18874368));
   Tensor<float> intermediate_97_tensor = {intermediate_97_data, intermediate_97_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_98_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 94371840, Size: 113246208 bytes
+  float* intermediate_98_data = (float*)(allocator.allocate_at_offset(94371840, 113246208));
   Tensor<float> intermediate_98_tensor = {intermediate_98_data, intermediate_98_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 113246208 bytes
-  float* intermediate_99_data = (float*)(allocator.allocate(113246208));
+  // Pool: default, Offset: 207618048, Size: 113246208 bytes
+  float* intermediate_99_data = (float*)(allocator.allocate_at_offset(207618048, 113246208));
   Tensor<float> intermediate_99_tensor = {intermediate_99_data, intermediate_99_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_100_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_100_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_100_tensor = {intermediate_100_data, intermediate_100_shape, 4};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_101_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37748736, Size: 18874368 bytes
+  float* intermediate_101_data = (float*)(allocator.allocate_at_offset(37748736, 18874368));
   Tensor<float> intermediate_101_tensor = {intermediate_101_data, intermediate_101_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_102_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_102_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_102_tensor = {intermediate_102_data, intermediate_102_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_103_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37748736, Size: 18874368 bytes
+  float* intermediate_103_data = (float*)(allocator.allocate_at_offset(37748736, 18874368));
   Tensor<float> intermediate_103_tensor = {intermediate_103_data, intermediate_103_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_104_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_104_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_104_tensor = {intermediate_104_data, intermediate_104_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_105_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 37748736, Size: 196608 bytes
+  float* intermediate_105_data = (float*)(allocator.allocate_at_offset(37748736, 196608));
   Tensor<float> intermediate_105_tensor = {intermediate_105_data, intermediate_105_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 196608 bytes
-  float* intermediate_106_data = (float*)(allocator.allocate(196608));
+  // Pool: default, Offset: 37945344, Size: 196608 bytes
+  float* intermediate_106_data = (float*)(allocator.allocate_at_offset(37945344, 196608));
   Tensor<float> intermediate_106_tensor = {intermediate_106_data, intermediate_106_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 49152 bytes
-  float* intermediate_107_data = (float*)(allocator.allocate(49152));
+  // Pool: default, Offset: 37748736, Size: 49152 bytes
+  float* intermediate_107_data = (float*)(allocator.allocate_at_offset(37748736, 49152));
   Tensor<float> intermediate_107_tensor = {intermediate_107_data, intermediate_107_shape, 2};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_108_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 37797888, Size: 18874368 bytes
+  float* intermediate_108_data = (float*)(allocator.allocate_at_offset(37797888, 18874368));
   Tensor<float> intermediate_108_tensor = {intermediate_108_data, intermediate_108_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 18874368 bytes
-  float* intermediate_109_data = (float*)(allocator.allocate(18874368));
+  // Pool: default, Offset: 0, Size: 18874368 bytes
+  float* intermediate_109_data = (float*)(allocator.allocate_at_offset(0, 18874368));
   Tensor<float> intermediate_109_tensor = {intermediate_109_data, intermediate_109_shape, 3};
-  // Pool: default, Offset: 6291456, Size: 8320 bytes
-  float* intermediate_110_data = (float*)(allocator.allocate(8320));
+  // Pool: default, Offset: 18874368, Size: 8320 bytes
+  float* intermediate_110_data = (float*)(allocator.allocate_at_offset(18874368, 8320));
   Tensor<float> intermediate_110_tensor = {intermediate_110_data, intermediate_110_shape, 2};
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {(float*)output_data, output_shape, output_dims};
 
-  <<<dim3(128, 32), dim3(384, 1, 1), 0>>>(embedding_forward(intermediate_0_tensor, input, param_tensors[0]););
+  embedding_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>((intermediate_0_tensor, input, param_tensors[0]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(positional_encoding_forward(intermediate_1_tensor, intermediate_0_tensor, param_tensors[1]););
+  positional_encoding_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_1_tensor, intermediate_0_tensor, param_tensors[1]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_2_tensor, intermediate_1_tensor, param_tensors[2], param_tensors[3]););
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>((intermediate_2_tensor, intermediate_1_tensor, param_tensors[2], param_tensors[3]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_3_tensor, intermediate_1_tensor, param_tensors[4], param_tensors[5]););
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>((intermediate_3_tensor, intermediate_1_tensor, param_tensors[4], param_tensors[5]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_4_tensor, intermediate_1_tensor, param_tensors[6], param_tensors[7]););
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>((intermediate_4_tensor, intermediate_1_tensor, param_tensors[6], param_tensors[7]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_5_tensor, intermediate_2_tensor););
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>((intermediate_5_tensor, intermediate_2_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_6_tensor, intermediate_3_tensor););
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>((intermediate_6_tensor, intermediate_3_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_7_tensor, intermediate_4_tensor););
+  split_heads_forward<<<dim3(6, 128, 32), dim3(64, 1, 1), 0>>>((intermediate_7_tensor, intermediate_4_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(16, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(16, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_8_tensor, intermediate_5_tensor, intermediate_6_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(128, 6, 32), dim3(128, 1, 1), 512>>>(fused_scale_softmax_forward(intermediate_9_tensor, intermediate_8_tensor););
+  fused_scale_softmax_forward<<<dim3(128, 6, 32), dim3(128, 1, 1), 512>>>((intermediate_9_tensor, intermediate_8_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(8, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor););
+  batched_matmul_tiled<<<dim3(8, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_10_tensor, intermediate_9_tensor, intermediate_7_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(128, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_11_tensor, intermediate_10_tensor););
+  concat_heads_forward<<<dim3(128, 32), dim3(384, 1, 1), 0>>>((intermediate_11_tensor, intermediate_10_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_12_tensor, intermediate_11_tensor, param_tensors[8], param_tensors[9]););
+  dense_forward_3d<<<dim3(2, 128, 32), dim3(256, 1, 1), 0>>>((intermediate_12_tensor, intermediate_11_tensor, param_tensors[8], param_tensors[9]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_13_tensor, intermediate_1_tensor, intermediate_12_tensor););
+  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_13_tensor, intermediate_1_tensor, intermediate_12_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_14_tensor, intermediate_13_tensor, param_tensors[10], param_tensors[11]););
+  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>((intermediate_14_tensor, intermediate_13_tensor, param_tensors[10], param_tensors[11]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_15_tensor, intermediate_14_tensor, param_tensors[12], param_tensors[13]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_15_tensor, intermediate_14_tensor, param_tensors[12], param_tensors[13]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_16_tensor, intermediate_15_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_16_tensor, intermediate_15_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_17_tensor, intermediate_16_tensor, param_tensors[14], param_tensors[15]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_17_tensor, intermediate_16_tensor, param_tensors[14], param_tensors[15]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_18_tensor, intermediate_14_tensor, intermediate_17_tensor););
+  add_forward<<<dim3(6144, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_18_tensor, intermediate_14_tensor, intermediate_17_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(128, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_19_tensor, intermediate_18_tensor, param_tensors[16], param_tensors[17]););
+  layer_norm_forward<<<dim3(128, 32), dim3(384, 1, 1), 1536>>>((intermediate_19_tensor, intermediate_18_tensor, param_tensors[16], param_tensors[17]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_20_tensor, intermediate_19_tensor, param_tensors[18], param_tensors[19]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_20_tensor, intermediate_19_tensor, param_tensors[18], param_tensors[19]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_21_tensor, intermediate_19_tensor, param_tensors[20], param_tensors[21]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_21_tensor, intermediate_19_tensor, param_tensors[20], param_tensors[21]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_22_tensor, intermediate_19_tensor, param_tensors[22], param_tensors[23]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_22_tensor, intermediate_19_tensor, param_tensors[22], param_tensors[23]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_23_tensor, intermediate_20_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_23_tensor, intermediate_20_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_24_tensor, intermediate_21_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_24_tensor, intermediate_21_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_25_tensor, intermediate_22_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_25_tensor, intermediate_22_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_26_tensor, intermediate_23_tensor, intermediate_24_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_27_tensor, intermediate_26_tensor););
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>((intermediate_27_tensor, intermediate_26_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor););
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_28_tensor, intermediate_27_tensor, intermediate_25_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_29_tensor, intermediate_28_tensor););
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>((intermediate_29_tensor, intermediate_28_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_30_tensor, intermediate_29_tensor, param_tensors[24], param_tensors[25]););
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>((intermediate_30_tensor, intermediate_29_tensor, param_tensors[24], param_tensors[25]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_31_tensor, intermediate_19_tensor, intermediate_30_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_31_tensor, intermediate_19_tensor, intermediate_30_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_32_tensor, intermediate_31_tensor, param_tensors[26], param_tensors[27]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_32_tensor, intermediate_31_tensor, param_tensors[26], param_tensors[27]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_33_tensor, intermediate_32_tensor, param_tensors[28], param_tensors[29]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_33_tensor, intermediate_32_tensor, param_tensors[28], param_tensors[29]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_34_tensor, intermediate_33_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_34_tensor, intermediate_33_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_35_tensor, intermediate_34_tensor, param_tensors[30], param_tensors[31]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_35_tensor, intermediate_34_tensor, param_tensors[30], param_tensors[31]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_36_tensor, intermediate_32_tensor, intermediate_35_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_36_tensor, intermediate_32_tensor, intermediate_35_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_37_tensor, intermediate_36_tensor, param_tensors[32], param_tensors[33]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_37_tensor, intermediate_36_tensor, param_tensors[32], param_tensors[33]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_38_tensor, intermediate_37_tensor, param_tensors[34], param_tensors[35]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_38_tensor, intermediate_37_tensor, param_tensors[34], param_tensors[35]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_39_tensor, intermediate_37_tensor, param_tensors[36], param_tensors[37]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_39_tensor, intermediate_37_tensor, param_tensors[36], param_tensors[37]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_40_tensor, intermediate_37_tensor, param_tensors[38], param_tensors[39]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_40_tensor, intermediate_37_tensor, param_tensors[38], param_tensors[39]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_41_tensor, intermediate_38_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_41_tensor, intermediate_38_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_42_tensor, intermediate_39_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_42_tensor, intermediate_39_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_43_tensor, intermediate_40_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_43_tensor, intermediate_40_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_44_tensor, intermediate_41_tensor, intermediate_42_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_44_tensor, intermediate_41_tensor, intermediate_42_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_45_tensor, intermediate_44_tensor););
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>((intermediate_45_tensor, intermediate_44_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_46_tensor, intermediate_45_tensor, intermediate_43_tensor););
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_46_tensor, intermediate_45_tensor, intermediate_43_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_47_tensor, intermediate_46_tensor););
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>((intermediate_47_tensor, intermediate_46_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_48_tensor, intermediate_47_tensor, param_tensors[40], param_tensors[41]););
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>((intermediate_48_tensor, intermediate_47_tensor, param_tensors[40], param_tensors[41]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_49_tensor, intermediate_37_tensor, intermediate_48_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_49_tensor, intermediate_37_tensor, intermediate_48_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_50_tensor, intermediate_49_tensor, param_tensors[42], param_tensors[43]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_50_tensor, intermediate_49_tensor, param_tensors[42], param_tensors[43]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_51_tensor, intermediate_50_tensor, param_tensors[44], param_tensors[45]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_51_tensor, intermediate_50_tensor, param_tensors[44], param_tensors[45]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_52_tensor, intermediate_51_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_52_tensor, intermediate_51_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_53_tensor, intermediate_52_tensor, param_tensors[46], param_tensors[47]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_53_tensor, intermediate_52_tensor, param_tensors[46], param_tensors[47]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_54_tensor, intermediate_50_tensor, intermediate_53_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_54_tensor, intermediate_50_tensor, intermediate_53_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_55_tensor, intermediate_54_tensor, param_tensors[48], param_tensors[49]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_55_tensor, intermediate_54_tensor, param_tensors[48], param_tensors[49]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_56_tensor, intermediate_55_tensor, param_tensors[50], param_tensors[51]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_56_tensor, intermediate_55_tensor, param_tensors[50], param_tensors[51]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_57_tensor, intermediate_55_tensor, param_tensors[52], param_tensors[53]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_57_tensor, intermediate_55_tensor, param_tensors[52], param_tensors[53]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_58_tensor, intermediate_55_tensor, param_tensors[54], param_tensors[55]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_58_tensor, intermediate_55_tensor, param_tensors[54], param_tensors[55]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_59_tensor, intermediate_56_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_59_tensor, intermediate_56_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_60_tensor, intermediate_57_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_60_tensor, intermediate_57_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_61_tensor, intermediate_58_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_61_tensor, intermediate_58_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_62_tensor, intermediate_59_tensor, intermediate_60_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_62_tensor, intermediate_59_tensor, intermediate_60_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_63_tensor, intermediate_62_tensor););
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>((intermediate_63_tensor, intermediate_62_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_64_tensor, intermediate_63_tensor, intermediate_61_tensor););
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_64_tensor, intermediate_63_tensor, intermediate_61_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_65_tensor, intermediate_64_tensor););
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>((intermediate_65_tensor, intermediate_64_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_66_tensor, intermediate_65_tensor, param_tensors[56], param_tensors[57]););
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>((intermediate_66_tensor, intermediate_65_tensor, param_tensors[56], param_tensors[57]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_67_tensor, intermediate_55_tensor, intermediate_66_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_67_tensor, intermediate_55_tensor, intermediate_66_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_68_tensor, intermediate_67_tensor, param_tensors[58], param_tensors[59]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_68_tensor, intermediate_67_tensor, param_tensors[58], param_tensors[59]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_69_tensor, intermediate_68_tensor, param_tensors[60], param_tensors[61]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_69_tensor, intermediate_68_tensor, param_tensors[60], param_tensors[61]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_70_tensor, intermediate_69_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_70_tensor, intermediate_69_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_71_tensor, intermediate_70_tensor, param_tensors[62], param_tensors[63]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_71_tensor, intermediate_70_tensor, param_tensors[62], param_tensors[63]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_72_tensor, intermediate_68_tensor, intermediate_71_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_72_tensor, intermediate_68_tensor, intermediate_71_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_73_tensor, intermediate_72_tensor, param_tensors[64], param_tensors[65]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_73_tensor, intermediate_72_tensor, param_tensors[64], param_tensors[65]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_74_tensor, intermediate_73_tensor, param_tensors[66], param_tensors[67]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_74_tensor, intermediate_73_tensor, param_tensors[66], param_tensors[67]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_75_tensor, intermediate_73_tensor, param_tensors[68], param_tensors[69]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_75_tensor, intermediate_73_tensor, param_tensors[68], param_tensors[69]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_76_tensor, intermediate_73_tensor, param_tensors[70], param_tensors[71]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_76_tensor, intermediate_73_tensor, param_tensors[70], param_tensors[71]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_77_tensor, intermediate_74_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_77_tensor, intermediate_74_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_78_tensor, intermediate_75_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_78_tensor, intermediate_75_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_79_tensor, intermediate_76_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_79_tensor, intermediate_76_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_80_tensor, intermediate_77_tensor, intermediate_78_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_80_tensor, intermediate_77_tensor, intermediate_78_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_81_tensor, intermediate_80_tensor););
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>((intermediate_81_tensor, intermediate_80_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_82_tensor, intermediate_81_tensor, intermediate_79_tensor););
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_82_tensor, intermediate_81_tensor, intermediate_79_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_83_tensor, intermediate_82_tensor););
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>((intermediate_83_tensor, intermediate_82_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_84_tensor, intermediate_83_tensor, param_tensors[72], param_tensors[73]););
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>((intermediate_84_tensor, intermediate_83_tensor, param_tensors[72], param_tensors[73]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_85_tensor, intermediate_73_tensor, intermediate_84_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_85_tensor, intermediate_73_tensor, intermediate_84_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_86_tensor, intermediate_85_tensor, param_tensors[74], param_tensors[75]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_86_tensor, intermediate_85_tensor, param_tensors[74], param_tensors[75]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_87_tensor, intermediate_86_tensor, param_tensors[76], param_tensors[77]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_87_tensor, intermediate_86_tensor, param_tensors[76], param_tensors[77]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_88_tensor, intermediate_87_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_88_tensor, intermediate_87_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_89_tensor, intermediate_88_tensor, param_tensors[78], param_tensors[79]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_89_tensor, intermediate_88_tensor, param_tensors[78], param_tensors[79]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_90_tensor, intermediate_86_tensor, intermediate_89_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_90_tensor, intermediate_86_tensor, intermediate_89_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_91_tensor, intermediate_90_tensor, param_tensors[80], param_tensors[81]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_91_tensor, intermediate_90_tensor, param_tensors[80], param_tensors[81]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_92_tensor, intermediate_91_tensor, param_tensors[82], param_tensors[83]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_92_tensor, intermediate_91_tensor, param_tensors[82], param_tensors[83]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_93_tensor, intermediate_91_tensor, param_tensors[84], param_tensors[85]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_93_tensor, intermediate_91_tensor, param_tensors[84], param_tensors[85]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_94_tensor, intermediate_91_tensor, param_tensors[86], param_tensors[87]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_94_tensor, intermediate_91_tensor, param_tensors[86], param_tensors[87]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_95_tensor, intermediate_92_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_95_tensor, intermediate_92_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_96_tensor, intermediate_93_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_96_tensor, intermediate_93_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>(split_heads_forward(intermediate_97_tensor, intermediate_94_tensor););
+  split_heads_forward<<<dim3(6, 384, 32), dim3(64, 1, 1), 0>>>((intermediate_97_tensor, intermediate_94_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_transpose_b_tiled(intermediate_98_tensor, intermediate_95_tensor, intermediate_96_tensor););
+  batched_matmul_transpose_b_tiled<<<dim3(144, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_98_tensor, intermediate_95_tensor, intermediate_96_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>(fused_scale_softmax_forward(intermediate_99_tensor, intermediate_98_tensor););
+  fused_scale_softmax_forward<<<dim3(384, 6, 32), dim3(384, 1, 1), 1536>>>((intermediate_99_tensor, intermediate_98_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>(batched_matmul_tiled(intermediate_100_tensor, intermediate_99_tensor, intermediate_97_tensor););
+  batched_matmul_tiled<<<dim3(24, 6, 32), dim3(32, 32, 1), 0>>>((intermediate_100_tensor, intermediate_99_tensor, intermediate_97_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 0>>>(concat_heads_forward(intermediate_101_tensor, intermediate_100_tensor););
+  concat_heads_forward<<<dim3(384, 32), dim3(384, 1, 1), 0>>>((intermediate_101_tensor, intermediate_100_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>(dense_forward_3d(intermediate_102_tensor, intermediate_101_tensor, param_tensors[88], param_tensors[89]););
+  dense_forward_3d<<<dim3(2, 384, 32), dim3(256, 1, 1), 0>>>((intermediate_102_tensor, intermediate_101_tensor, param_tensors[88], param_tensors[89]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_103_tensor, intermediate_91_tensor, intermediate_102_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_103_tensor, intermediate_91_tensor, intermediate_102_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_104_tensor, intermediate_103_tensor, param_tensors[90], param_tensors[91]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_104_tensor, intermediate_103_tensor, param_tensors[90], param_tensors[91]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(6, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_105_tensor, intermediate_104_tensor, param_tensors[92], param_tensors[93]););
+  dense_forward_2d<<<dim3(6, 32), dim3(256, 1, 1), 0>>>((intermediate_105_tensor, intermediate_104_tensor, param_tensors[92], param_tensors[93]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>(relu_forward(intermediate_106_tensor, intermediate_105_tensor););
+  relu_forward<<<dim3(192, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_106_tensor, intermediate_105_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(2, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_107_tensor, intermediate_106_tensor, param_tensors[94], param_tensors[95]););
+  dense_forward_2d<<<dim3(2, 32), dim3(256, 1, 1), 0>>>((intermediate_107_tensor, intermediate_106_tensor, param_tensors[94], param_tensors[95]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>(add_forward(intermediate_108_tensor, intermediate_104_tensor, intermediate_107_tensor););
+  add_forward<<<dim3(18432, 1, 1), dim3(256, 1, 1), 0>>>((intermediate_108_tensor, intermediate_104_tensor, intermediate_107_tensor););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(384, 32), dim3(384, 1, 1), 1536>>>(layer_norm_forward(intermediate_109_tensor, intermediate_108_tensor, param_tensors[96], param_tensors[97]););
+  layer_norm_forward<<<dim3(384, 32), dim3(384, 1, 1), 1536>>>((intermediate_109_tensor, intermediate_108_tensor, param_tensors[96], param_tensors[97]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(1, 32), dim3(256, 1, 1), 0>>>(dense_forward_2d(intermediate_110_tensor, intermediate_109_tensor, param_tensors[98], param_tensors[99]););
+  dense_forward_2d<<<dim3(1, 32), dim3(256, 1, 1), 0>>>((intermediate_110_tensor, intermediate_109_tensor, param_tensors[98], param_tensors[99]););
   CUDA_CHECK(cudaGetLastError());
-  <<<dim3(32, 1, 1), dim3(96, 1, 1), 384>>>(softmax_forward(output, intermediate_110_tensor););
+  softmax_forward<<<dim3(32, 1, 1), dim3(96, 1, 1), 384>>>((output, intermediate_110_tensor););
   CUDA_CHECK(cudaGetLastError());
     
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -1581,9 +1595,9 @@ extern "C" void executeGraphSimple(
     const int param_shape_9[] = {384}; // param_9_bias
     const int param_shape_10[] = {384}; // param_10_gamma
     const int param_shape_11[] = {384}; // param_11_beta
-    const int param_shape_12[] = {384, 384}; // param_12_weights
-    const int param_shape_13[] = {384}; // param_13_bias
-    const int param_shape_14[] = {384, 384}; // param_14_weights
+    const int param_shape_12[] = {384, 1536}; // param_12_weights
+    const int param_shape_13[] = {1536}; // param_13_bias
+    const int param_shape_14[] = {1536, 384}; // param_14_weights
     const int param_shape_15[] = {384}; // param_15_bias
     const int param_shape_16[] = {384}; // param_16_gamma
     const int param_shape_17[] = {384}; // param_17_beta
@@ -1597,9 +1611,9 @@ extern "C" void executeGraphSimple(
     const int param_shape_25[] = {384}; // param_25_bias
     const int param_shape_26[] = {384}; // param_26_gamma
     const int param_shape_27[] = {384}; // param_27_beta
-    const int param_shape_28[] = {384, 384}; // param_28_weights
-    const int param_shape_29[] = {384}; // param_29_bias
-    const int param_shape_30[] = {384, 384}; // param_30_weights
+    const int param_shape_28[] = {384, 1536}; // param_28_weights
+    const int param_shape_29[] = {1536}; // param_29_bias
+    const int param_shape_30[] = {1536, 384}; // param_30_weights
     const int param_shape_31[] = {384}; // param_31_bias
     const int param_shape_32[] = {384}; // param_32_gamma
     const int param_shape_33[] = {384}; // param_33_beta
@@ -1613,9 +1627,9 @@ extern "C" void executeGraphSimple(
     const int param_shape_41[] = {384}; // param_41_bias
     const int param_shape_42[] = {384}; // param_42_gamma
     const int param_shape_43[] = {384}; // param_43_beta
-    const int param_shape_44[] = {384, 384}; // param_44_weights
-    const int param_shape_45[] = {384}; // param_45_bias
-    const int param_shape_46[] = {384, 384}; // param_46_weights
+    const int param_shape_44[] = {384, 1536}; // param_44_weights
+    const int param_shape_45[] = {1536}; // param_45_bias
+    const int param_shape_46[] = {1536, 384}; // param_46_weights
     const int param_shape_47[] = {384}; // param_47_bias
     const int param_shape_48[] = {384}; // param_48_gamma
     const int param_shape_49[] = {384}; // param_49_beta
@@ -1629,9 +1643,9 @@ extern "C" void executeGraphSimple(
     const int param_shape_57[] = {384}; // param_57_bias
     const int param_shape_58[] = {384}; // param_58_gamma
     const int param_shape_59[] = {384}; // param_59_beta
-    const int param_shape_60[] = {384, 384}; // param_60_weights
-    const int param_shape_61[] = {384}; // param_61_bias
-    const int param_shape_62[] = {384, 384}; // param_62_weights
+    const int param_shape_60[] = {384, 1536}; // param_60_weights
+    const int param_shape_61[] = {1536}; // param_61_bias
+    const int param_shape_62[] = {1536, 384}; // param_62_weights
     const int param_shape_63[] = {384}; // param_63_bias
     const int param_shape_64[] = {384}; // param_64_gamma
     const int param_shape_65[] = {384}; // param_65_beta
@@ -1645,9 +1659,9 @@ extern "C" void executeGraphSimple(
     const int param_shape_73[] = {384}; // param_73_bias
     const int param_shape_74[] = {384}; // param_74_gamma
     const int param_shape_75[] = {384}; // param_75_beta
-    const int param_shape_76[] = {384, 384}; // param_76_weights
-    const int param_shape_77[] = {384}; // param_77_bias
-    const int param_shape_78[] = {384, 384}; // param_78_weights
+    const int param_shape_76[] = {384, 1536}; // param_76_weights
+    const int param_shape_77[] = {1536}; // param_77_bias
+    const int param_shape_78[] = {1536, 384}; // param_78_weights
     const int param_shape_79[] = {384}; // param_79_bias
     const int param_shape_80[] = {384}; // param_80_gamma
     const int param_shape_81[] = {384}; // param_81_beta
@@ -1661,14 +1675,14 @@ extern "C" void executeGraphSimple(
     const int param_shape_89[] = {384}; // param_89_bias
     const int param_shape_90[] = {384}; // param_90_gamma
     const int param_shape_91[] = {384}; // param_91_beta
-    const int param_shape_92[] = {384, 384}; // param_92_weights
-    const int param_shape_93[] = {384}; // param_93_bias
-    const int param_shape_94[] = {384, 384}; // param_94_weights
+    const int param_shape_92[] = {384, 1536}; // param_92_weights
+    const int param_shape_93[] = {1536}; // param_93_bias
+    const int param_shape_94[] = {1536, 384}; // param_94_weights
     const int param_shape_95[] = {384}; // param_95_bias
     const int param_shape_96[] = {384}; // param_96_gamma
     const int param_shape_97[] = {384}; // param_97_beta
-    const int param_shape_98[] = {384, 384}; // param_98_weights
-    const int param_shape_99[] = {384}; // param_99_bias
+    const int param_shape_98[] = {384, 65}; // param_98_weights
+    const int param_shape_99[] = {65}; // param_99_bias
     
     const int* param_shapes[100] = {
         param_shape_0,

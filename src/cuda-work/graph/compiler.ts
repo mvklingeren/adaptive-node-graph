@@ -170,7 +170,7 @@ export class CudaGraphCompiler {
         this.calculateOptimalGridBlock(node, outputTensors, inputTensors);
 
       executionCalls.push(
-        `  ${kernelCall.startsWith(node.functionName) ? '' : node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelCall});`
+        `  ${node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelCall});`
       );
       executionCalls.push(`  CUDA_CHECK(cudaGetLastError());`);
     }
@@ -395,14 +395,14 @@ extern "C" void executeGraphSimple(
     const int input_shape[] = {input_batch_size, input_seq_len};
     const int output_shape[] = {output_batch_size, output_vocab_size};
     
-    ${this.generateParameterShapeDeclarations(graph, paramNames)}
+    ${this.generateParameterShapeDeclarations(graph, paramNames, paramNameMapping)}
     
     const int* param_shapes[${paramNames.length}] = {
         ${paramNames.map((_, i) => `param_shape_${i}`).join(",\n        ")}
     };
     
     const int param_dims[${paramNames.length}] = {
-        ${this.generateParameterDims(graph, paramNames).join(", ")}
+        ${this.generateParameterDims(graph, paramNames, paramNameMapping).join(", ")}
     };
     
     const char* param_dtypes[${paramNames.length}] = {
@@ -433,12 +433,13 @@ extern "C" void executeGraphSimple(
 
   private generateParameterShapeDeclarations(
     graph: CudaGraph,
-    paramNames: string[]
+    paramNames: string[],
+    paramNameMapping: Map<string, string>
   ): string {
     const declarations: string[] = [];
 
     paramNames.forEach((paramName, i) => {
-      const tensor = this.findTensorByGlobalName(graph, paramName);
+      const tensor = this.findTensorByGlobalName(graph, paramName, paramNameMapping);
       if (tensor && tensor.shape) {
         declarations.push(
           `    const int param_shape_${i}[] = {${tensor.shape.join(
@@ -475,22 +476,25 @@ extern "C" void executeGraphSimple(
 
   private generateParameterDims(
     graph: CudaGraph,
-    paramNames: string[]
+    paramNames: string[],
+    paramNameMapping: Map<string, string>
   ): number[] {
     return paramNames.map((paramName) => {
-      const tensor = this.findTensorByGlobalName(graph, paramName);
+      const tensor = this.findTensorByGlobalName(graph, paramName, paramNameMapping);
       return tensor ? tensor.shape.length : 1;
     });
   }
 
   private findTensorByGlobalName(
     graph: CudaGraph,
-    globalName: string
+    globalName: string,
+    paramNameMapping: Map<string, string>
   ): CudaTensor | null {
     for (const node of graph.nodes.values()) {
       for (const [localName, tensor] of node.parameters) {
         const nodeParamKey = `${node.id}:${localName}`;
-        if (globalName.includes(localName)) {
+        const mappedGlobalName = paramNameMapping.get(nodeParamKey);
+        if (mappedGlobalName === globalName) {
           return tensor;
         }
       }
@@ -1009,10 +1013,11 @@ struct Tensor {
           const batchSize = shape[0];
           const seqLen = shape[1];
           const embedDim = shape[2];
+          const totalElements = batchSize * seqLen * embedDim;
           const blockSize = this.config.defaultBlockSize!;
-          const gridX = Math.ceil(embedDim / blockSize);
+          const gridSize = Math.ceil(totalElements / blockSize);
           return {
-            gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
+            gridDim: `dim3(${gridSize}, 1, 1)`,
             blockDim: `dim3(${blockSize}, 1, 1)`,
             sharedMemSize: 0,
           };
