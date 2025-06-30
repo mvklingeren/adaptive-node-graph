@@ -95,265 +95,45 @@ struct Tensor {
   }
 };
 
-// ======================================================
-// Advanced Memory Reuse Allocator
-// ======================================================
-#include <vector>
-#include <map>
-#include <algorithm>
 
-class AdvancedWorkspaceAllocator
-{
+// ======================================================
+// Dynamic Memory Allocator
+// ======================================================
+class WorkspaceAllocator {
 private:
-    struct MemoryBlock
-    {
-        void *ptr;
-        size_t size;
-        bool is_free;
-        int allocation_id;
-        int last_used_step;
-
-        MemoryBlock(void *p, size_t s, int aid)
-            : ptr(p), size(s), is_free(false), allocation_id(aid), last_used_step(0) {}
-    };
-
     char* base_ptr;
-    size_t total_size;
     size_t current_offset;
-    size_t peak_usage;
-    int current_step;
-
-    std::vector<MemoryBlock> memory_blocks;
-    std::map<int, std::vector<int>> deallocation_schedule;
-
-    // Statistics
-    size_t total_allocated;
-    size_t total_reused;
-    int successful_reuses;
-    int failed_reuses;
-
+    size_t total_size;
+    
     // Helper to align to 256-byte boundaries for optimal GPU performance
     inline size_t align_to_256_bytes(size_t size) const {
         return (size + 255) & ~255;
     }
-
-    MemoryBlock *find_suitable_free_block(size_t size)
-    {
-        for (auto &block : memory_blocks)
-        {
-            if (block.is_free && block.size >= size)
-            {
-                return &block;
-            }
-        }
-        return nullptr;
-    }
-
-    void *allocate_new_block(size_t size, int allocation_id)
-    {
+    
+public:
+    WorkspaceAllocator(char* workspace, size_t workspace_size) 
+        : base_ptr(workspace), current_offset(0), total_size(workspace_size) {}
+    
+    void* allocate(size_t size) {
         size_t aligned_size = align_to_256_bytes(size);
-
-        if (current_offset + aligned_size > total_size)
-        {
-            fprintf(stderr, "ERROR: Workspace allocator out of memory.\n");
-            fprintf(stderr, "Requested: %zu bytes (aligned: %zu), Available: %zu bytes\n",
+        
+        if (current_offset + aligned_size > total_size) {
+            fprintf(stderr, "ERROR: Workspace allocator out of memory. Requested: %zu bytes (aligned: %zu), Available: %zu bytes\n", 
                     size, aligned_size, total_size - current_offset);
-            fprintf(stderr, "Peak usage: %zu bytes (%.1f MB)\n",
-                    peak_usage, peak_usage / 1024.0 / 1024.0);
-            fprintf(stderr, "Reuse efficiency: %.1f%%\n", get_reuse_efficiency() * 100);
             return nullptr;
         }
-
-        void *ptr = base_ptr + current_offset;
+        
+        void* ptr = base_ptr + current_offset;
         current_offset += aligned_size;
-        peak_usage = std::max(peak_usage, current_offset);
-
-        memory_blocks.emplace_back(ptr, aligned_size, allocation_id);
-        total_allocated += aligned_size;
-
         return ptr;
     }
-
-    void initialize_deallocation_schedule()
-    {
-        // Shakespeare LLM deallocation schedule - optimized for memory reuse
-        deallocation_schedule[1] = {0};                   // After positional encoding
-        deallocation_schedule[8] = {5, 6};                // After first attention matmul
-        deallocation_schedule[10] = {8, 9};               // After attention softmax
-        deallocation_schedule[13] = {2, 3, 4, 7};         // After attention concat
-        deallocation_schedule[19] = {15, 16};             // After first MLP
-        deallocation_schedule[26] = {23, 24, 25, 26, 27}; // After cross-attention block
-        deallocation_schedule[32] = {33, 34};             // After second MLP
-        deallocation_schedule[44] = {41, 42, 43, 44, 45}; // After second transformer
-        deallocation_schedule[50] = {51, 52};             // After third MLP
-        deallocation_schedule[62] = {59, 60, 61, 62, 63}; // After third transformer
-        deallocation_schedule[68] = {69, 70};             // After fourth MLP
-        deallocation_schedule[80] = {77, 78, 79, 80, 81}; // After fourth transformer
-        deallocation_schedule[86] = {87, 88};             // After fifth MLP
-        deallocation_schedule[98] = {95, 96, 97, 98, 99}; // After fifth transformer
-        deallocation_schedule[104] = {105, 106};          // After final MLP
-        deallocation_schedule[110] = {108, 109};          // Before final output
+    
+    size_t get_used_size() const {
+        return current_offset;
     }
-
-    void coalesce_free_blocks()
-    {
-        // Sort blocks by memory address for efficient coalescing
-        std::sort(memory_blocks.begin(), memory_blocks.end(),
-                  [](const MemoryBlock &a, const MemoryBlock &b)
-                  {
-                      return a.ptr < b.ptr;
-                  });
-
-        // Coalesce adjacent free blocks
-        for (size_t i = 0; i < memory_blocks.size() - 1;)
-        {
-            MemoryBlock &current = memory_blocks[i];
-            MemoryBlock &next = memory_blocks[i + 1];
-
-            if (current.is_free && next.is_free &&
-                (char *)current.ptr + current.size == next.ptr)
-            {
-                // Merge blocks
-                current.size += next.size;
-                memory_blocks.erase(memory_blocks.begin() + i + 1);
-                // Don't increment i, check this position again
-            }
-            else
-            {
-                i++;
-            }
-        }
-    }
-
-public:
-    AdvancedWorkspaceAllocator(char *workspace, size_t workspace_size)
-        : base_ptr(workspace), total_size(workspace_size), current_offset(0),
-          peak_usage(0), current_step(0), total_allocated(0), total_reused(0),
-          successful_reuses(0), failed_reuses(0)
-    {
-
-        initialize_deallocation_schedule();
-    }
-
-    void *allocate_with_reuse(size_t size, int allocation_id)
-    {
-        size_t aligned_size = align_to_256_bytes(size);
-
-        // Try to reuse existing free block
-        MemoryBlock *reuse_block = find_suitable_free_block(aligned_size);
-        if (reuse_block)
-        {
-            reuse_block->is_free = false;
-            reuse_block->allocation_id = allocation_id;
-            reuse_block->last_used_step = current_step;
-
-            // Split block if it's much larger than needed (reduce fragmentation)
-            if (reuse_block->size > aligned_size + 1024)
-            { // 1KB threshold
-                size_t remaining_size = reuse_block->size - aligned_size;
-                void *remaining_ptr = (char *)reuse_block->ptr + aligned_size;
-
-                reuse_block->size = aligned_size;
-                memory_blocks.emplace_back(remaining_ptr, remaining_size, -1);
-                memory_blocks.back().is_free = true;
-            }
-
-            total_reused += aligned_size;
-            successful_reuses++;
-
-            return reuse_block->ptr;
-        }
-
-        // Allocate new block if no suitable reuse found
-        failed_reuses++;
-        return allocate_new_block(aligned_size, allocation_id);
-    }
-
-    void advance_step()
-    {
-        current_step++;
-        deallocate_dead_tensors();
-    }
-
-    void deallocate_dead_tensors()
-    {
-        auto it = deallocation_schedule.find(current_step);
-        if (it != deallocation_schedule.end())
-        {
-            for (int allocation_id : it->second)
-            {
-                deallocate_tensor_by_id(allocation_id);
-            }
-
-            // Coalesce free blocks to reduce fragmentation
-            coalesce_free_blocks();
-        }
-    }
-
-    void deallocate_tensor_by_id(int allocation_id)
-    {
-        for (auto &block : memory_blocks)
-        {
-            if (block.allocation_id == allocation_id && !block.is_free)
-            {
-                block.is_free = true;
-                block.allocation_id = -1;
-                break;
-            }
-        }
-    }
-
-    // Legacy method for compatibility
-    void *allocate(size_t size)
-    {
-        static int legacy_id_counter = 10000;
-        return allocate_with_reuse(size, legacy_id_counter++);
-    }
-
-    // Statistics and monitoring
-    size_t get_peak_usage() const { return peak_usage; }
-    size_t get_current_usage() const { return current_offset; }
-    size_t get_used_size() const { return current_offset; }
-    double get_reuse_efficiency() const
-    {
-        return total_allocated > 0 ? (double)total_reused / total_allocated : 0.0;
-    }
-
-    void print_statistics() const
-    {
-        printf("=== Advanced Memory Allocation Statistics ===\n");
-        printf("Peak usage: %zu bytes (%.1f MB)\n", peak_usage, peak_usage / 1024.0 / 1024.0);
-        printf("Total allocated: %zu bytes (%.1f MB)\n", total_allocated, total_allocated / 1024.0 / 1024.0);
-        printf("Total reused: %zu bytes (%.1f MB)\n", total_reused, total_reused / 1024.0 / 1024.0);
-        printf("Reuse efficiency: %.1f%%\n", get_reuse_efficiency() * 100);
-        printf("Successful reuses: %d\n", successful_reuses);
-        printf("Failed reuses: %d\n", failed_reuses);
-        printf("Memory blocks: %zu\n", memory_blocks.size());
-    }
-
-    void emergency_cleanup()
-    {
-        // Force deallocation of all blocks that should be dead by now
-        for (auto &block : memory_blocks)
-        {
-            if (!block.is_free && block.last_used_step < current_step - 5)
-            {
-                block.is_free = true;
-                block.allocation_id = -1;
-            }
-        }
-        coalesce_free_blocks();
-    }
-
+    
     void reset() {
         current_offset = 0;
-        current_step = 0;
-        memory_blocks.clear();
-        total_allocated = 0;
-        total_reused = 0;
-        successful_reuses = 0;
-        failed_reuses = 0;
-        peak_usage = 0;
     }
 };
 
@@ -787,25 +567,12 @@ public:
        */
       __global__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        
-        // Calculate total size dynamically based on tensor dimensions
-        int size = a.total_elements();
-        
-        // Handle broadcasting: if b has fewer elements, broadcast it
-        int b_size = b.total_elements();
-        bool broadcast_b = (b_size < size);
-        
-        // Stride-based element-wise addition with broadcasting support
-        for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            if (broadcast_b) {
-                // Simple broadcasting: repeat b's elements cyclically
-                // This works for cases like [batch, seq, features] + [batch, features]
-                int b_idx = i % b_size;
-                output.data[i] = a.data[i] + b.data[b_idx];
-            } else {
-                // Direct element-wise addition
-                output.data[i] = a.data[i] + b.data[i];
-            }
+        int size = output.total_elements();
+
+        if (idx < size) {
+            int a_idx = idx % a.total_elements();
+            int b_idx = idx % b.total_elements();
+            output.data[idx] = a.data[a_idx] + b.data[b_idx];
         }
       }
     
@@ -1382,9 +1149,9 @@ extern "C" void executeGraph(
   
   // Note: We no longer check for exact workspace size since we're using dynamic allocation
   // The allocator will report if we run out of space
-
-  // --- Initialize Advanced Memory Reuse Allocator ---
-  AdvancedWorkspaceAllocator allocator(workspace, workspace_size);
+  
+  // --- Initialize Dynamic Memory Allocator ---
+  WorkspaceAllocator allocator(workspace, workspace_size);
 
   // --- Variable Declarations ---
   const int intermediate_0_shape[] = {32, 128, 384};
@@ -1499,20 +1266,20 @@ extern "C" void executeGraph(
   const int intermediate_109_shape[] = {32, 384, 384};
   const int intermediate_110_shape[] = {32, 65};
 
-  // --- Tensor Struct Instantiation with Memory Reuse ---
-  float *intermediate_0_data = (float *)allocator.allocate_with_reuse(6291456, 0);
+  // --- Tensor Struct Instantiation ---
+  float* intermediate_0_data = (float*)allocator.allocate(6291456);
   if (!intermediate_0_data) { fprintf(stderr, "Failed to allocate memory for intermediate_0\n"); return; }
   Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 3};
-  float *intermediate_1_data = (float *)allocator.allocate_with_reuse(6291456, 1);
+  float* intermediate_1_data = (float*)allocator.allocate(6291456);
   if (!intermediate_1_data) { fprintf(stderr, "Failed to allocate memory for intermediate_1\n"); return; }
   Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 3};
-  float *intermediate_2_data = (float *)allocator.allocate_with_reuse(6291456, 2);
+  float* intermediate_2_data = (float*)allocator.allocate(6291456);
   if (!intermediate_2_data) { fprintf(stderr, "Failed to allocate memory for intermediate_2\n"); return; }
   Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 3};
-  float *intermediate_3_data = (float *)allocator.allocate_with_reuse(6291456, 3);
+  float* intermediate_3_data = (float*)allocator.allocate(6291456);
   if (!intermediate_3_data) { fprintf(stderr, "Failed to allocate memory for intermediate_3\n"); return; }
   Tensor<float> intermediate_3_tensor = {intermediate_3_data, intermediate_3_shape, 3};
-  float *intermediate_4_data = (float *)allocator.allocate_with_reuse(6291456, 4);
+  float* intermediate_4_data = (float*)allocator.allocate(6291456);
   if (!intermediate_4_data) { fprintf(stderr, "Failed to allocate memory for intermediate_4\n"); return; }
   Tensor<float> intermediate_4_tensor = {intermediate_4_data, intermediate_4_shape, 3};
   float* intermediate_5_data = (float*)allocator.allocate(6291456);
@@ -2174,3 +1941,4 @@ extern "C" void executeGraph(
   
   // --- End Execution Flow ---
 }
+    

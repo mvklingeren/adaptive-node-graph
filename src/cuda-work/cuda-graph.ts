@@ -390,7 +390,7 @@ export class CudaGraphCompiler {
     const executionOrder = graph.getExecutionOrder();
     const filename = `generated-${graph.name}-kernel.cu`;
     
-    const { intermediateTensors, workspaceSize, tensorRegistry, deallocationPoints } = this.planMemory(graph, executionOrder);
+    const { intermediateTensors, workspaceSize, tensorRegistry } = this.planMemory(graph, executionOrder);
 
     // Add intermediate tensors to the registry BEFORE processing nodes
     const variableDeclarations: string[] = [];
@@ -728,10 +728,9 @@ ${executionCalls.join("\n")}
   }
 
   private planMemory(graph: CudaGraph, executionOrder: CudaNode[]): {
-      intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, allocationId: number }>,
+      intermediateTensors: Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>,
       workspaceSize: number,
-      tensorRegistry: Map<string, { varName: string, spec: { shape: number[], dtype: string } }>,
-      deallocationPoints: Map<number, number[]> // step -> allocation_ids to free
+      tensorRegistry: Map<string, { varName: string, spec: { shape: number[], dtype: string } }>
   } {
     const tensorRegistry = new Map<string, { varName: string, spec: { shape: number[], dtype: string } }>();
     const graphInputs = graph.getGraphInputs();
@@ -744,8 +743,7 @@ ${executionCalls.join("\n")}
       tensorRegistry.set(`${node.id}:${outputPort}`, { varName: outputPort, spec: node.outputs.get(port)! });
     }
 
-    const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number, allocationId: number }>();
-    let allocationIdCounter = 1000; // Start from 1000 to avoid conflicts
+    const intermediateTensors = new Map<string, { spec: { shape: number[], dtype: string }, size: number, liveStart: number, liveEnd: number, offset: number }>();
     
     // First pass: collect all intermediate tensors and their lifetimes
     executionOrder.forEach((node, i) => {
@@ -757,14 +755,7 @@ ${executionCalls.join("\n")}
             }
             if (!tensorRegistry.has(key)) {
                 const size = spec.shape.reduce((a, b) => a * b, 1) * 4; // size in bytes
-                intermediateTensors.set(key, { 
-                    spec, 
-                    size, 
-                    liveStart: i, 
-                    liveEnd: i, 
-                    offset: -1, 
-                    allocationId: allocationIdCounter++ 
-                });
+                intermediateTensors.set(key, { spec, size, liveStart: i, liveEnd: i, offset: -1 });
             }
         }
     });
@@ -779,121 +770,61 @@ ${executionCalls.join("\n")}
             if (conn) {
                 const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
                 if (intermediateTensors.has(sourceKey)) {
-                    // Update the last use time for this tensor
                     intermediateTensors.get(sourceKey)!.liveEnd = Math.max(intermediateTensors.get(sourceKey)!.liveEnd, i);
                 }
             }
         }
     });
 
-    // Enhanced memory allocation with smart reuse and deallocation tracking
-    const deallocationPoints = new Map<number, number[]>();
-    const memoryPool: {offset: number, size: number, isFree: boolean, allocationId?: number}[] = [];
+    // Third pass: allocate memory using a greedy algorithm
+    const alignTo256Bytes = (size: number): number => Math.ceil(size / 256) * 256;
+    const memoryBlocks: { offset: number, size: number, freeAt: number }[] = [];
     let workspaceSize = 0;
-    
-    // Helper function to align memory to 256-byte boundaries for optimal GPU performance
-    const alignTo256Bytes = (size: number): number => {
-        return Math.ceil(size / 256) * 256;
-    };
 
-    // Sort tensors by live start time, then by size (largest first for better packing)
-    const sortedTensors = Array.from(intermediateTensors.entries()).sort((a, b) => {
-        if (a[1].liveStart !== b[1].liveStart) {
-            return a[1].liveStart - b[1].liveStart;
-        }
-        return b[1].size - a[1].size; // Larger tensors first
-    });
+    const sortedTensors = Array.from(intermediateTensors.values()).sort((a, b) => b.size - a.size);
 
-    // Process each tensor allocation
-    for (const [key, tensor] of sortedTensors) {
+    for (const tensor of sortedTensors) {
         const alignedSize = alignTo256Bytes(tensor.size);
-        let allocated = false;
-        
-        // Try to find a free block that can accommodate this tensor
-        for (let i = 0; i < memoryPool.length; i++) {
-            const block = memoryPool[i];
-            if (block.isFree && block.size >= alignedSize) {
-                // Reuse this block
-                tensor.offset = block.offset;
-                
-                // If the block is larger than needed, split it
-                if (block.size > alignedSize) {
-                    // Create a new free block for the remainder
-                    memoryPool.splice(i + 1, 0, {
-                        offset: block.offset + alignedSize,
-                        size: block.size - alignedSize,
-                        isFree: true
-                    });
+        let bestFitIndex = -1;
+        let minFitSize = Infinity;
+
+        // Find the best-fitting free block
+        for (let i = 0; i < memoryBlocks.length; i++) {
+            const block = memoryBlocks[i];
+            if (block.freeAt <= tensor.liveStart && block.size >= alignedSize) {
+                if (block.size < minFitSize) {
+                    minFitSize = block.size;
+                    bestFitIndex = i;
                 }
-                
-                // Mark this block as used
-                block.isFree = false;
-                block.size = alignedSize;
-                block.allocationId = tensor.allocationId;
-                allocated = true;
-                break;
             }
         }
-        
-        if (!allocated) {
-            // Allocate new block at the end
+
+        if (bestFitIndex !== -1) {
+            // Allocate in the found block
+            const block = memoryBlocks[bestFitIndex];
+            tensor.offset = block.offset;
+            block.freeAt = tensor.liveEnd + 1;
+        } else {
+            // Allocate a new block
             tensor.offset = workspaceSize;
-            memoryPool.push({
+            memoryBlocks.push({
                 offset: workspaceSize,
                 size: alignedSize,
-                isFree: false,
-                allocationId: tensor.allocationId
+                freeAt: tensor.liveEnd + 1
             });
             workspaceSize += alignedSize;
         }
-        
-        // Schedule deallocation when tensor goes out of scope
-        if (tensor.liveEnd < executionOrder.length - 1) { // Don't deallocate final outputs
-            const deallocStep = tensor.liveEnd + 1;
-            if (!deallocationPoints.has(deallocStep)) {
-                deallocationPoints.set(deallocStep, []);
-            }
-            deallocationPoints.get(deallocStep)!.push(tensor.allocationId);
-        }
-        
-        // Free blocks that are no longer needed at this step
-        const currentStep = tensor.liveStart;
-        if (deallocationPoints.has(currentStep)) {
-            for (const allocId of deallocationPoints.get(currentStep)!) {
-                // Find and free the block
-                for (const block of memoryPool) {
-                    if (block.allocationId === allocId) {
-                        block.isFree = true;
-                        delete block.allocationId;
-                        break;
-                    }
-                }
-                
-                // Coalesce adjacent free blocks
-                for (let i = 0; i < memoryPool.length - 1; i++) {
-                    const current = memoryPool[i];
-                    const next = memoryPool[i + 1];
-                    if (current.isFree && next.isFree && 
-                        current.offset + current.size === next.offset) {
-                        current.size += next.size;
-                        memoryPool.splice(i + 1, 1);
-                        i--; // Check this position again
-                    }
-                }
-            }
-        }
     }
     
-    // Calculate memory efficiency
     const totalTensorSize = Array.from(intermediateTensors.values())
         .reduce((sum, tensor) => sum + alignTo256Bytes(tensor.size), 0);
-    const efficiency = ((totalTensorSize / workspaceSize) * 100).toFixed(1);
+    const efficiency = workspaceSize > 0 ? ((totalTensorSize / workspaceSize) * 100).toFixed(1) : "N/A";
     
-    console.log(`[Enhanced Memory Planning] Total workspace size: ${workspaceSize} bytes (${(workspaceSize / 1024 / 1024).toFixed(2)} MB)`);
-    console.log(`[Enhanced Memory Planning] Total tensor size: ${totalTensorSize} bytes (${(totalTensorSize / 1024 / 1024).toFixed(2)} MB)`);
-    console.log(`[Enhanced Memory Planning] Memory efficiency: ${efficiency}% (${intermediateTensors.size} tensors, ${deallocationPoints.size} deallocation points)`);
-    
-    return { intermediateTensors, workspaceSize, tensorRegistry, deallocationPoints };
+    console.log(`[Memory Planning] Total workspace size: ${workspaceSize} bytes (${(workspaceSize / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Memory Planning] Total tensor size (if not reused): ${totalTensorSize} bytes (${(totalTensorSize / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[Memory Planning] Memory efficiency: ${efficiency}%`);
+
+    return { intermediateTensors, workspaceSize, tensorRegistry };
   }
 
   private calculateOptimalGridBlock(

@@ -549,55 +549,25 @@ export class AddLayer implements Layer {
        */
       __global__ void add_forward(Tensor<float> output, Tensor<float> a, Tensor<float> b) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        
-        // Calculate total size dynamically based on tensor dimensions
-        int size = a.total_elements();
-        
-        // Handle broadcasting: if b has fewer elements, broadcast it
-        int b_size = b.total_elements();
-        bool broadcast_b = (b_size < size);
-        
-        // Stride-based element-wise addition with broadcasting support
-        for (int i = idx; i < size; i += gridDim.x * blockDim.x) {
-            if (broadcast_b) {
-                // Simple broadcasting: repeat b's elements cyclically
-                // This works for cases like [batch, seq, features] + [batch, features]
-                int b_idx = i % b_size;
-                output.data[i] = a.data[i] + b.data[b_idx];
-            } else {
-                // Direct element-wise addition
-                output.data[i] = a.data[i] + b.data[i];
-            }
+        int size = output.total_elements();
+
+        if (idx < size) {
+            int a_idx = idx % a.total_elements();
+            int b_idx = idx % b.total_elements();
+            output.data[idx] = a.data[a_idx] + b.data[b_idx];
         }
       }
     `;
 
     const addNode = new CudaNode(deviceCode, "add_forward")
-      .addInput("a", [-1], "float32") // Dynamic shape - will be resolved at runtime
-      .addInput("b", [-1], "float32") // Dynamic shape - will be resolved at runtime  
-      .addOutput("output", [-1], "float32") // Dynamic shape - will be resolved at runtime
+      .addInput("a", [-1], "float32")
+      .addInput("b", [-1], "float32")
+      .addOutput("output", [-1], "float32")
       .setShapeResolver((inputs) => {
         const aShape = inputs.get("a")!.shape;
         const bShape = inputs.get("b")!.shape;
-        
-        // Determine output shape based on broadcasting rules
-        // For now, we'll use the larger tensor's shape as the output shape
-        const aSize = aShape.reduce((a, b) => a * b, 1);
-        const bSize = bShape.reduce((a, b) => a * b, 1);
-        
-        if (aSize === bSize) {
-          // Same size - direct element-wise addition
-          if (JSON.stringify(aShape) !== JSON.stringify(bShape)) {
-            console.warn(`AddLayer: Same size tensors with different shapes. a: [${aShape.join(',')}], b: [${bShape.join(',')}]. Using shape of tensor a.`);
-          }
-          return new Map([["output", { shape: aShape }]]);
-        } else if (aSize > bSize) {
-          // a is larger - broadcast b to a's shape
-          return new Map([["output", { shape: aShape }]]);
-        } else {
-          // b is larger - broadcast a to b's shape  
-          return new Map([["output", { shape: bShape }]]);
-        }
+        const outputShape = aShape.length > bShape.length ? aShape : bShape;
+        return new Map([["output", { shape: outputShape }]]);
       });
 
     graph.addNode(addNode);
