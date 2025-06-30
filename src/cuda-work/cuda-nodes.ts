@@ -446,22 +446,25 @@ export class TensorCoreMatMulNode extends CudaNode {
     });
   }
 
-  // Override the kernel call generation to use optimal grid/block configuration
+  // Override the kernel call generation to use the standard method
   getKernelCall(
     outputTensorNames: Map<string, string>,
-    inputTensorNames: Map<string, string>
+    inputTensorNames: Map<string, string>,
+    parameterResolver: (nodeId: string, paramName: string) => string
   ): string {
-    const outputArgs = Array.from(this.outputs.keys()).map(name => outputTensorNames.get(name));
-    const inputArgs = Array.from(this.inputs.keys()).map(name => inputTensorNames.get(name));
-    const paramArgs = Array.from(this.parameters.keys());
+    const outputArgs = Array.from(this.outputs.keys()).map((name) =>
+      outputTensorNames.get(name)
+    ).filter(arg => arg !== undefined);
+    
+    const inputArgs = Array.from(this.inputs.keys()).map((name) =>
+      inputTensorNames.get(name)
+    ).filter(arg => arg !== undefined);
+    
+    const paramArgs = Array.from(this.parameters.keys()).map((name) =>
+      parameterResolver(this.id, name)
+    ).filter(arg => arg !== undefined);
 
     const allArgs = [...outputArgs, ...inputArgs, ...paramArgs].join(", ");
-    
-    // Calculate optimal grid/block dimensions for Tensor Cores
-    // For WMMA, we need warps to handle 16x16 tiles
-    const blockDim = "dim3(32, 1, 1)"; // One warp per block
-    const gridDim = "dim3((N + 15) / 16, (M + 15) / 16, 1)"; // Tile the matrix
-    
-    return `${this.functionName}<<<${gridDim}, ${blockDim}>>>(${allArgs});`;
+    return allArgs;
   }
 }
