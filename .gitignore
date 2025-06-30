@@ -6,4 +6,4 @@ src/.DS_Store
 
 dist/
 
-*.tar.gz
+cuda_project.tar.gz

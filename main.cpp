@@ -199,7 +199,13 @@ int main() {
     const int numHeads = 6;
     const int numLayers = 6;
     const int ffnHiddenDim = 4 * embedDim;
-    const size_t workspaceSize = 113246208 * 2; // A safe upper bound from the .cu file
+    
+    // Workspace size configurable at compile time
+    #ifndef WORKSPACE_SIZE_MB
+    #define WORKSPACE_SIZE_MB 1024  // Default 1GB if not specified
+    #endif
+    const size_t workspaceSize = WORKSPACE_SIZE_MB * 1024ULL * 1024ULL; // Convert MB to bytes
+    std::cout << "Using workspace size: " << WORKSPACE_SIZE_MB << "MB (" << workspaceSize << " bytes)" << std::endl;
 
     // 2. Load and Tokenize Data
     std::cout << "Loading Shakespeare dataset..." << std::endl;

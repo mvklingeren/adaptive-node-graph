@@ -16,9 +16,11 @@ CU_OBJ = $(CU_SRC:.cu=.o)
 
 # Compiler flags
 # -O3 for optimization
-# -arch=sm_75 is for a Tesla T4 GPU, common on Colab. Adjust if using a different GPU.
+# -arch=sm_89 is for RTX 4090. Use sm_75 for Tesla T4, sm_80 for A100, etc.
 # -std=c++17 to enable modern C++ features used in main.cpp
-NVCC_FLAGS = -O3 -std=c++17 -arch=sm_75
+# WORKSPACE_SIZE_MB can be overridden: make WORKSPACE_SIZE_MB=2048
+WORKSPACE_SIZE_MB ?= 1024
+NVCC_FLAGS = -O3 -std=c++17 -arch=sm_89 -DWORKSPACE_SIZE_MB=$(WORKSPACE_SIZE_MB)
 
 # Default target
 all: $(TARGET)
