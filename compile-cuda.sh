@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Default block size
+# Default values
 BLOCK_SIZE=""
+FILE_NAME="test-neural-graph"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -10,10 +11,15 @@ while [[ $# -gt 0 ]]; do
       BLOCK_SIZE="${1#*=}"
       shift
       ;;
+    --file=*)
+      FILE_NAME="${1#*=}"
+      shift
+      ;;
     *)
       echo "Unknown option $1"
-      echo "Usage: $0 [--bs=SIZE|--block-size=SIZE]"
+      echo "Usage: $0 [--bs=SIZE|--block-size=SIZE] [--file=FILENAME]"
       echo "  SIZE must be > 0, <= 1024, and multiple of 32"
+      echo "  FILENAME is the name of the typescript file in src/cuda-work/ (without .ts extension)"
       exit 1
       ;;
   esac
@@ -34,17 +40,19 @@ if [[ -n "$BLOCK_SIZE" ]]; then
   echo "Using block size: $BLOCK_SIZE"
 fi
 
+echo "Using file: $FILE_NAME"
+
 # Clean and build
 npm run clean
 
 # Build the test with esbuild
-npx esbuild src/cuda-work/test-neural-graph.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/test-neural-graph.js --external:pino
+npx esbuild src/cuda-work/$FILE_NAME.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/$FILE_NAME.js --external:pino
 
 # Run the test with block size argument if provided
 if [[ -n "$BLOCK_SIZE" ]]; then
-  node dist/test-neural-graph.js --bs=$BLOCK_SIZE
+  node dist/$FILE_NAME.js --bs=$BLOCK_SIZE
 else
-  node dist/test-neural-graph.js
+  node dist/$FILE_NAME.js
 fi
 
 # Compile the generated CUDA code
