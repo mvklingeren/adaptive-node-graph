@@ -26,6 +26,30 @@ export interface CudaTensor {
 }
 
 /**
+ * Represents a CUDA stream for asynchronous execution.
+ */
+export interface CudaStream {
+  /** A unique identifier for the CUDA stream. */
+  readonly id: string;
+  /** Synchronizes the stream (waits for all operations to complete). */
+  synchronize(): Promise<void>;
+  /** Destroys the stream and frees resources. */
+  destroy(): Promise<void>;
+}
+
+/**
+ * Represents a cuBLAS handle for optimized linear algebra operations.
+ */
+export interface CublasHandle {
+  /** A unique identifier for the cuBLAS handle. */
+  readonly id: string;
+  /** Sets the stream for this cuBLAS handle. */
+  setStream(stream: CudaStream): Promise<void>;
+  /** Destroys the handle and frees resources. */
+  destroy(): Promise<void>;
+}
+
+/**
  * Represents a compiled CUDA kernel that is ready to be launched on the GPU.
  */
 export interface CudaKernel {
@@ -37,12 +61,14 @@ export interface CudaKernel {
    * @param blockDim - The dimensions of a thread block.
    * @param sharedMemBytes - The amount of shared memory to allocate per block.
    * @param args - The arguments to pass to the kernel (e.g., CudaTensors).
+   * @param stream - Optional CUDA stream for asynchronous execution.
    */
   launch(
     gridDim: { x: number; y?: number; z?: number },
     blockDim: { x: number; y?: number; z?: number },
     sharedMemBytes: number,
-    args: CudaTensor[]
+    args: CudaTensor[],
+    stream?: CudaStream
   ): Promise<void>;
 }
 
@@ -120,6 +146,175 @@ export interface CudaRuntime {
    * Retrieves information about the available GPU devices.
    */
   getDeviceInfo(): Promise<any>;
+
+  // ============================================================================
+  // CUDA Streams Support
+  // ============================================================================
+
+  /**
+   * Creates a new CUDA stream for asynchronous execution.
+   * @returns A promise that resolves to a CudaStream object.
+   */
+  createStream(): Promise<CudaStream>;
+
+  /**
+   * Destroys a CUDA stream and frees its resources.
+   * @param stream - The stream to destroy.
+   */
+  destroyStream(stream: CudaStream): Promise<void>;
+
+  /**
+   * Sets the current stream for subsequent operations.
+   * @param stream - The stream to set as current, or null for default stream.
+   */
+  setCurrentStream(stream: CudaStream | null): void;
+}
+
+/**
+ * Extended runtime interface that includes cuBLAS support.
+ * This interface extends CudaRuntime with optimized linear algebra operations.
+ */
+export interface CublasRuntime extends CudaRuntime {
+  // ============================================================================
+  // cuBLAS Handle Management
+  // ============================================================================
+
+  /**
+   * Creates a new cuBLAS handle for optimized linear algebra operations.
+   * @returns A promise that resolves to a CublasHandle object.
+   */
+  createCublasHandle(): Promise<CublasHandle>;
+
+  /**
+   * Destroys a cuBLAS handle and frees its resources.
+   * @param handle - The handle to destroy.
+   */
+  destroyCublasHandle(handle: CublasHandle): Promise<void>;
+
+  // ============================================================================
+  // Optimized GEMM Operations
+  // ============================================================================
+
+  /**
+   * Performs a general matrix-matrix multiplication using cuBLAS.
+   * C = alpha * op(A) * op(B) + beta * C
+   * @param handle - The cuBLAS handle.
+   * @param stream - The CUDA stream for asynchronous execution.
+   * @param transa - Transpose operation for matrix A ('N' = no transpose, 'T' = transpose).
+   * @param transb - Transpose operation for matrix B ('N' = no transpose, 'T' = transpose).
+   * @param m - Number of rows of matrix op(A) and C.
+   * @param n - Number of columns of matrix op(B) and C.
+   * @param k - Number of columns of op(A) and rows of op(B).
+   * @param alpha - Scalar multiplier for A*B.
+   * @param A - Input matrix A.
+   * @param lda - Leading dimension of A.
+   * @param B - Input matrix B.
+   * @param ldb - Leading dimension of B.
+   * @param beta - Scalar multiplier for C.
+   * @param C - Input/output matrix C.
+   * @param ldc - Leading dimension of C.
+   */
+  gemmEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor,
+    lda: number,
+    B: CudaTensor,
+    ldb: number,
+    beta: number,
+    C: CudaTensor,
+    ldc: number
+  ): Promise<void>;
+
+  /**
+   * Performs batched general matrix-matrix multiplication using cuBLAS.
+   * Performs multiple GEMM operations in a single call for better performance.
+   * @param handle - The cuBLAS handle.
+   * @param stream - The CUDA stream for asynchronous execution.
+   * @param transa - Transpose operation for matrix A ('N' = no transpose, 'T' = transpose).
+   * @param transb - Transpose operation for matrix B ('N' = no transpose, 'T' = transpose).
+   * @param m - Number of rows of matrix op(A) and C.
+   * @param n - Number of columns of matrix op(B) and C.
+   * @param k - Number of columns of op(A) and rows of op(B).
+   * @param alpha - Scalar multiplier for A*B.
+   * @param A - Array of input matrices A.
+   * @param lda - Leading dimension of A matrices.
+   * @param B - Array of input matrices B.
+   * @param ldb - Leading dimension of B matrices.
+   * @param beta - Scalar multiplier for C.
+   * @param C - Array of input/output matrices C.
+   * @param ldc - Leading dimension of C matrices.
+   * @param batchCount - Number of matrices in the batch.
+   */
+  gemmBatchedEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor[],
+    lda: number,
+    B: CudaTensor[],
+    ldb: number,
+    beta: number,
+    C: CudaTensor[],
+    ldc: number,
+    batchCount: number
+  ): Promise<void>;
+
+  /**
+   * Performs strided batched GEMM for tensors with regular stride patterns.
+   * More efficient than gemmBatchedEx when matrices are stored contiguously.
+   * @param handle - The cuBLAS handle.
+   * @param stream - The CUDA stream for asynchronous execution.
+   * @param transa - Transpose operation for matrix A.
+   * @param transb - Transpose operation for matrix B.
+   * @param m - Number of rows of matrix op(A) and C.
+   * @param n - Number of columns of matrix op(B) and C.
+   * @param k - Number of columns of op(A) and rows of op(B).
+   * @param alpha - Scalar multiplier for A*B.
+   * @param A - Input tensor containing batch of matrices A.
+   * @param lda - Leading dimension of A matrices.
+   * @param strideA - Stride between consecutive A matrices.
+   * @param B - Input tensor containing batch of matrices B.
+   * @param ldb - Leading dimension of B matrices.
+   * @param strideB - Stride between consecutive B matrices.
+   * @param beta - Scalar multiplier for C.
+   * @param C - Input/output tensor containing batch of matrices C.
+   * @param ldc - Leading dimension of C matrices.
+   * @param strideC - Stride between consecutive C matrices.
+   * @param batchCount - Number of matrices in the batch.
+   */
+  gemmStridedBatchedEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor,
+    lda: number,
+    strideA: number,
+    B: CudaTensor,
+    ldb: number,
+    strideB: number,
+    beta: number,
+    C: CudaTensor,
+    ldc: number,
+    strideC: number,
+    batchCount: number
+  ): Promise<void>;
 }
 
 /**
@@ -129,7 +324,9 @@ export interface CudaRuntime {
 export class MockCudaRuntime implements CudaRuntime {
   private nextTensorId = 0;
   private nextKernelId = 0;
+  private nextStreamId = 0;
   private memory = new Map<string, Buffer>();
+  private currentStream: CudaStream | null = null;
 
   async compile(kernelCode: string, filename: string): Promise<CudaKernel> {
     const kernelId = `mock_kernel_${this.nextKernelId++}`;
@@ -141,8 +338,9 @@ export class MockCudaRuntime implements CudaRuntime {
     
     return {
       id: kernelId,
-      launch: async (grid, block, shared, args) => {
-        console.log(`[MockCudaRuntime] Launching kernel ${kernelId} with ${args.length} args.`);
+      launch: async (grid, block, shared, args, stream) => {
+        const streamInfo = stream ? ` on stream ${stream.id}` : ' on default stream';
+        console.log(`[MockCudaRuntime] Launching kernel ${kernelId} with ${args.length} args${streamInfo}.`);
         // In a real scenario, this would trigger GPU execution.
         // Here we can add mock logic if needed, e.g., logging tensor contents.
       },
@@ -201,5 +399,147 @@ export class MockCudaRuntime implements CudaRuntime {
       name: "Mock CUDA Device",
       totalMemory: 1024 * 1024 * 1024, // 1GB
     };
+  }
+
+  // ============================================================================
+  // CUDA Streams Support
+  // ============================================================================
+
+  async createStream(): Promise<CudaStream> {
+    const streamId = `mock_stream_${this.nextStreamId++}`;
+    console.log(`[MockCudaRuntime] Created stream ${streamId}`);
+    
+    return {
+      id: streamId,
+      synchronize: async () => {
+        console.log(`[MockCudaRuntime] Synchronizing stream ${streamId}`);
+        // In a real implementation, this would wait for all operations on the stream to complete
+      },
+      destroy: async () => {
+        console.log(`[MockCudaRuntime] Destroyed stream ${streamId}`);
+        // In a real implementation, this would free the stream resources
+      },
+    };
+  }
+
+  async destroyStream(stream: CudaStream): Promise<void> {
+    console.log(`[MockCudaRuntime] Destroying stream ${stream.id}`);
+    await stream.destroy();
+  }
+
+  setCurrentStream(stream: CudaStream | null): void {
+    this.currentStream = stream;
+    const streamInfo = stream ? stream.id : 'default stream';
+    console.log(`[MockCudaRuntime] Set current stream to ${streamInfo}`);
+  }
+}
+
+/**
+ * A mock implementation of the CublasRuntime for testing and development.
+ * This extends MockCudaRuntime with cuBLAS functionality.
+ */
+export class MockCublasRuntime extends MockCudaRuntime implements CublasRuntime {
+  private nextHandleId = 0;
+
+  // ============================================================================
+  // cuBLAS Handle Management
+  // ============================================================================
+
+  async createCublasHandle(): Promise<CublasHandle> {
+    const handleId = `mock_cublas_handle_${this.nextHandleId++}`;
+    console.log(`[MockCublasRuntime] Created cuBLAS handle ${handleId}`);
+    
+    return {
+      id: handleId,
+      setStream: async (stream: CudaStream) => {
+        console.log(`[MockCublasRuntime] Set cuBLAS handle ${handleId} to use stream ${stream.id}`);
+      },
+      destroy: async () => {
+        console.log(`[MockCublasRuntime] Destroyed cuBLAS handle ${handleId}`);
+      },
+    };
+  }
+
+  async destroyCublasHandle(handle: CublasHandle): Promise<void> {
+    console.log(`[MockCublasRuntime] Destroying cuBLAS handle ${handle.id}`);
+    await handle.destroy();
+  }
+
+  // ============================================================================
+  // Optimized GEMM Operations
+  // ============================================================================
+
+  async gemmEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor,
+    lda: number,
+    B: CudaTensor,
+    ldb: number,
+    beta: number,
+    C: CudaTensor,
+    ldc: number
+  ): Promise<void> {
+    console.log(`[MockCublasRuntime] cuBLAS GEMM: ${transa}${transb} [${m}x${n}x${k}] alpha=${alpha} beta=${beta}`);
+    console.log(`  Handle: ${handle.id}, Stream: ${stream.id}`);
+    console.log(`  A: ${A.id} (${A.shape.join('x')}), B: ${B.id} (${B.shape.join('x')}), C: ${C.id} (${C.shape.join('x')})`);
+    // In a real implementation, this would call cublasGemmEx
+  }
+
+  async gemmBatchedEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor[],
+    lda: number,
+    B: CudaTensor[],
+    ldb: number,
+    beta: number,
+    C: CudaTensor[],
+    ldc: number,
+    batchCount: number
+  ): Promise<void> {
+    console.log(`[MockCublasRuntime] cuBLAS Batched GEMM: ${transa}${transb} [${m}x${n}x${k}] batch=${batchCount}`);
+    console.log(`  Handle: ${handle.id}, Stream: ${stream.id}`);
+    console.log(`  A: ${A.length} tensors, B: ${B.length} tensors, C: ${C.length} tensors`);
+    // In a real implementation, this would call cublasGemmBatchedEx
+  }
+
+  async gemmStridedBatchedEx(
+    handle: CublasHandle,
+    stream: CudaStream,
+    transa: 'N' | 'T',
+    transb: 'N' | 'T',
+    m: number,
+    n: number,
+    k: number,
+    alpha: number,
+    A: CudaTensor,
+    lda: number,
+    strideA: number,
+    B: CudaTensor,
+    ldb: number,
+    strideB: number,
+    beta: number,
+    C: CudaTensor,
+    ldc: number,
+    strideC: number,
+    batchCount: number
+  ): Promise<void> {
+    console.log(`[MockCublasRuntime] cuBLAS Strided Batched GEMM: ${transa}${transb} [${m}x${n}x${k}] batch=${batchCount}`);
+    console.log(`  Handle: ${handle.id}, Stream: ${stream.id}`);
+    console.log(`  A: ${A.id} stride=${strideA}, B: ${B.id} stride=${strideB}, C: ${C.id} stride=${strideC}`);
+    // In a real implementation, this would call cublasGemmStridedBatchedEx
   }
 }
