@@ -12,11 +12,11 @@ export class CudaGraphCompiler {
   constructor(private runtime: CudaRuntime, config?: CompilerConfig) {
     this.config = {
       useArrayInterface: true,
-      enableBoundsChecking: true,
+      enableBoundsChecking: true, // Ensure this is true for debugging
       defaultBlockSize: 256,
       memoryAlignment: 256,
       enableMemoryPooling: true,
-      verboseMemoryPlanning: false,
+      verboseMemoryPlanning: true, // Enable verbose logging for memory planning
       ...config,
     };
   }
@@ -172,6 +172,7 @@ export class CudaGraphCompiler {
       executionCalls.push(
         `  ${node.functionName}<<<${gridDim}, ${blockDim}, ${sharedMemSize}>>>(${kernelCall});`
       );
+      // Add CUDA_CHECK after each kernel launch for easier debugging
       executionCalls.push(`  CUDA_CHECK(cudaGetLastError());`);
     }
 
@@ -505,13 +506,9 @@ extern "C" void executeGraphSimple(
   private getTensorStructDefinition(): string {
     const boundsCheck = this.config.enableBoundsChecking;
     return `
-#ifndef NDEBUG
-#define TENSOR_BOUNDS_CHECK ${boundsCheck ? 1 : 0}
-#define TENSOR_BOUNDS_CHECK_VERBOSE ${boundsCheck ? 1 : 0}
-#else
-#define TENSOR_BOUNDS_CHECK 0
-#define TENSOR_BOUNDS_CHECK_VERBOSE 0
-#endif
+// Always enable for debugging purposes
+#define TENSOR_BOUNDS_CHECK 1
+#define TENSOR_BOUNDS_CHECK_VERBOSE 1
 
 template<typename T>
 struct Tensor {

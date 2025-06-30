@@ -16,13 +16,9 @@
 } while(0)
 
 
-#ifndef NDEBUG
+// Always enable for debugging purposes
 #define TENSOR_BOUNDS_CHECK 1
 #define TENSOR_BOUNDS_CHECK_VERBOSE 1
-#else
-#define TENSOR_BOUNDS_CHECK 0
-#define TENSOR_BOUNDS_CHECK_VERBOSE 0
-#endif
 
 template<typename T>
 struct Tensor {
