@@ -112,16 +112,18 @@ export class CudaNode {
   ): string {
     const outputArgs = Array.from(this.outputs.keys()).map((name) =>
       outputTensorNames.get(name)
-    );
+    ).filter(arg => arg !== undefined);
+    
     const inputArgs = Array.from(this.inputs.keys()).map((name) =>
       inputTensorNames.get(name)
-    );
+    ).filter(arg => arg !== undefined);
+    
     const paramArgs = Array.from(this.parameters.keys()).map((name) =>
       parameterResolver(this.id, name)
-    );
+    ).filter(arg => arg !== undefined);
 
     const allArgs = [...outputArgs, ...inputArgs, ...paramArgs].join(", ");
-    return `(${allArgs});`;
+    return allArgs;
   }
 }
 
