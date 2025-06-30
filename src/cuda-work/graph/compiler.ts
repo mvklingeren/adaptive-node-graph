@@ -825,6 +825,7 @@ struct Tensor {
       nodeIndexMap.set(node.id, i);
     });
 
+    // Initialize all tensors with their production time
     for (const [tensorKey, tensorInfo] of intermediateTensors.entries()) {
       const [nodeId, port] = tensorKey.split(":");
       const producerIndex = nodeIndexMap.get(nodeId);
@@ -834,23 +835,51 @@ struct Tensor {
       }
     }
 
-    for (const [tensorKey, tensorInfo] of intermediateTensors.entries()) {
-      for (const conn of graph.connections) {
-        const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
-        if (sourceKey === tensorKey) {
-          const targetNodeIndex = nodeIndexMap.get(conn.toNode.id);
-          if (targetNodeIndex !== undefined) {
-            tensorInfo.liveEnd = Math.max(tensorInfo.liveEnd, targetNodeIndex);
-          }
+    // Build a map of which tensors are consumed by which nodes
+    const tensorConsumers = new Map<string, Set<string>>();
+
+    for (const conn of graph.connections) {
+      const sourceKey = `${conn.fromNode.id}:${conn.fromPort}`;
+      const consumerId = conn.toNode.id;
+
+      if (!tensorConsumers.has(sourceKey)) {
+        tensorConsumers.set(sourceKey, new Set());
+      }
+      tensorConsumers.get(sourceKey)!.add(consumerId);
+    }
+
+    // Update liveEnd based on last consumer
+    for (const [tensorKey, consumerIds] of tensorConsumers.entries()) {
+      const tensorInfo = intermediateTensors.get(tensorKey);
+      if (!tensorInfo) continue;
+
+      let maxConsumerIndex = tensorInfo.liveStart;
+      for (const consumerId of consumerIds) {
+        const consumerIndex = nodeIndexMap.get(consumerId);
+        if (consumerIndex !== undefined) {
+          maxConsumerIndex = Math.max(maxConsumerIndex, consumerIndex);
         }
       }
+      tensorInfo.liveEnd = maxConsumerIndex;
+    }
 
-      const graphOutputs = this.getGraphOutputs(graph);
-      for (const [outputName, outputInfo] of graphOutputs) {
-        if (`${outputInfo.node.id}:${outputInfo.port}` === tensorKey) {
-          tensorInfo.liveEnd = executionOrder.length - 1;
-          break;
-        }
+    // Handle graph outputs - they must live until the end
+    const graphOutputs = this.getGraphOutputs(graph);
+    for (const [outputName, outputInfo] of graphOutputs) {
+      const outputKey = `${outputInfo.node.id}:${outputInfo.port}`;
+      const tensorInfo = intermediateTensors.get(outputKey);
+      if (tensorInfo) {
+        tensorInfo.liveEnd = executionOrder.length - 1;
+      }
+    }
+
+    // Log lifetime information for debugging
+    if (this.config.verboseMemoryPlanning) {
+      console.log("\n[Memory Planning] Tensor lifetimes:");
+      for (const [key, info] of intermediateTensors.entries()) {
+        console.log(
+          `  ${key}: live from ${info.liveStart} to ${info.liveEnd} (size: ${info.size} bytes)`
+        );
       }
     }
   }
@@ -897,65 +926,128 @@ struct Tensor {
         return b[1].size - a[1].size; // Larger tensors first
       });
 
-    // Track active allocations with their end times
-    const activeAllocations: Array<{
-      offset: number;
+    // Track memory intervals: array of {start, end, size}
+    const memoryIntervals: Array<{
+      start: number;
+      end: number;
       size: number;
-      endTime: number;
+      tensorKey: string;
     }> = [];
 
-    let maxOffset = 0;
+    let maxWorkspaceSize = 0;
 
     for (const [tensorKey, tensor] of sortedTensors) {
       const alignedSize = this.alignTo256Bytes(tensor.size);
-      
-      // Remove expired allocations
-      const currentTime = tensor.liveStart;
-      for (let i = activeAllocations.length - 1; i >= 0; i--) {
-        if (activeAllocations[i].endTime < currentTime) {
-          activeAllocations.splice(i, 1);
-        }
-      }
-      
-      // Find best fit offset
+
+      // Find the earliest offset where this tensor can fit
       let bestOffset = 0;
       let found = false;
-      
-      // Try to fit in gaps between active allocations
-      activeAllocations.sort((a, b) => a.offset - b.offset);
-      
-      for (let i = 0; i <= activeAllocations.length; i++) {
-        const startOffset = i === 0 ? 0 : activeAllocations[i - 1].offset + activeAllocations[i - 1].size;
-        const endOffset = i === activeAllocations.length ? Infinity : activeAllocations[i].offset;
-        
-        if (endOffset - startOffset >= alignedSize) {
-          bestOffset = startOffset;
-          found = true;
-          break;
+
+      // Sort intervals by start offset
+      memoryIntervals.sort((a, b) => a.start - b.start);
+
+      // Check each gap between intervals
+      for (let i = 0; i <= memoryIntervals.length; i++) {
+        const gapStart = i === 0 ? 0 : memoryIntervals[i - 1].end;
+        const gapEnd =
+          i === memoryIntervals.length ? Infinity : memoryIntervals[i].start;
+
+        // Check if this gap is large enough and doesn't overlap with live tensors
+        if (gapEnd - gapStart >= alignedSize) {
+          // Verify no overlap with any tensor that's live during our lifetime
+          let hasConflict = false;
+          for (const interval of memoryIntervals) {
+            // Check if lifetimes overlap
+            const lifetimeOverlap = !(
+              tensor.liveEnd < interval.start || tensor.liveStart > interval.end
+            );
+            // Check if memory regions would overlap
+            const memoryOverlap = !(
+              gapStart + alignedSize <= interval.start ||
+              gapStart >= interval.end
+            );
+
+            if (lifetimeOverlap && memoryOverlap) {
+              hasConflict = true;
+              break;
+            }
+          }
+
+          if (!hasConflict) {
+            bestOffset = gapStart;
+            found = true;
+            break;
+          }
         }
       }
-      
+
       if (!found) {
-        // Place at the end
-        bestOffset = activeAllocations.length > 0 
-          ? Math.max(...activeAllocations.map(a => a.offset + a.size))
-          : 0;
+        // No suitable gap found, place at the end of all allocations
+        bestOffset =
+          memoryIntervals.length > 0
+            ? Math.max(...memoryIntervals.map((interval) => interval.end))
+            : 0;
       }
-      
-      // Align the offset
-      bestOffset = Math.ceil(bestOffset / this.config.memoryAlignment!) * this.config.memoryAlignment!;
-      
+
+      // Ensure alignment
+      bestOffset =
+        Math.ceil(bestOffset / this.config.memoryAlignment!) *
+        this.config.memoryAlignment!;
+
       tensor.offset = bestOffset;
-      activeAllocations.push({
-        offset: bestOffset,
+
+      // Add this allocation to our intervals
+      memoryIntervals.push({
+        start: bestOffset,
+        end: bestOffset + alignedSize,
         size: alignedSize,
-        endTime: tensor.liveEnd
+        tensorKey: tensorKey,
       });
-      
-      maxOffset = Math.max(maxOffset, bestOffset + alignedSize);
+
+      maxWorkspaceSize = Math.max(maxWorkspaceSize, bestOffset + alignedSize);
+
+      // Log allocation for debugging
+      if (this.config.verboseMemoryPlanning) {
+        console.log(
+          `[Memory Planning] Allocated ${tensorKey} at offset ${bestOffset} (size: ${alignedSize}, lifetime: ${tensor.liveStart}-${tensor.liveEnd})`
+        );
+      }
     }
 
-    return { memoryPools, workspaceSize: maxOffset };
+    // Verify no overlaps in final allocation
+    if (this.config.verboseMemoryPlanning) {
+      console.log("\n[Memory Planning] Verifying memory allocation...");
+      for (let i = 0; i < memoryIntervals.length; i++) {
+        for (let j = i + 1; j < memoryIntervals.length; j++) {
+          const interval1 = memoryIntervals[i];
+          const interval2 = memoryIntervals[j];
+          const tensor1 = intermediateTensors.get(interval1.tensorKey)!;
+          const tensor2 = intermediateTensors.get(interval2.tensorKey)!;
+
+          // Check if lifetimes overlap
+          const lifetimeOverlap = !(
+            tensor1.liveEnd < tensor2.liveStart ||
+            tensor1.liveStart > tensor2.liveEnd
+          );
+          // Check if memory regions overlap
+          const memoryOverlap = !(
+            interval1.end <= interval2.start || interval1.start >= interval2.end
+          );
+
+          if (lifetimeOverlap && memoryOverlap) {
+            console.error(`[Memory Planning] ERROR: Memory overlap detected!`);
+            console.error(
+              `  ${interval1.tensorKey}: offset=${interval1.start}, size=${interval1.size}, lifetime=${tensor1.liveStart}-${tensor1.liveEnd}`
+            );
+            console.error(
+              `  ${interval2.tensorKey}: offset=${interval2.start}, size=${interval2.size}, lifetime=${tensor2.liveStart}-${tensor2.liveEnd}`
+            );
+          }
+        }
+      }
+    }
+
+    return { memoryPools, workspaceSize: maxWorkspaceSize };
   }
 
   private categorizeTensorSize(size: number): string {
