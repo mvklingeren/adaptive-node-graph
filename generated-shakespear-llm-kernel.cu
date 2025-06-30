@@ -1267,338 +1267,209 @@ extern "C" void executeGraph(
   const int intermediate_110_shape[] = {32, 65};
 
   // --- Tensor Struct Instantiation ---
-  float* intermediate_0_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_0_data) { fprintf(stderr, "Failed to allocate memory for intermediate_0\n"); return; }
+  float* intermediate_0_data = (float*)(workspace + 0);
   Tensor<float> intermediate_0_tensor = {intermediate_0_data, intermediate_0_shape, 3};
-  float* intermediate_1_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_1_data) { fprintf(stderr, "Failed to allocate memory for intermediate_1\n"); return; }
+  float* intermediate_1_data = (float*)(workspace + 6291456);
   Tensor<float> intermediate_1_tensor = {intermediate_1_data, intermediate_1_shape, 3};
-  float* intermediate_2_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_2_data) { fprintf(stderr, "Failed to allocate memory for intermediate_2\n"); return; }
+  float* intermediate_2_data = (float*)(workspace + 0);
   Tensor<float> intermediate_2_tensor = {intermediate_2_data, intermediate_2_shape, 3};
-  float* intermediate_3_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_3_data) { fprintf(stderr, "Failed to allocate memory for intermediate_3\n"); return; }
+  float* intermediate_3_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_3_tensor = {intermediate_3_data, intermediate_3_shape, 3};
-  float* intermediate_4_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_4_data) { fprintf(stderr, "Failed to allocate memory for intermediate_4\n"); return; }
+  float* intermediate_4_data = (float*)(workspace + 18874368);
   Tensor<float> intermediate_4_tensor = {intermediate_4_data, intermediate_4_shape, 3};
-  float* intermediate_5_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_5_data) { fprintf(stderr, "Failed to allocate memory for intermediate_5\n"); return; }
+  float* intermediate_5_data = (float*)(workspace + 25165824);
   Tensor<float> intermediate_5_tensor = {intermediate_5_data, intermediate_5_shape, 4};
-  float* intermediate_6_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_6_data) { fprintf(stderr, "Failed to allocate memory for intermediate_6\n"); return; }
+  float* intermediate_6_data = (float*)(workspace + 0);
   Tensor<float> intermediate_6_tensor = {intermediate_6_data, intermediate_6_shape, 4};
-  float* intermediate_7_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_7_data) { fprintf(stderr, "Failed to allocate memory for intermediate_7\n"); return; }
+  float* intermediate_7_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_7_tensor = {intermediate_7_data, intermediate_7_shape, 4};
-  float* intermediate_8_data = (float*)allocator.allocate(12582912);
-  if (!intermediate_8_data) { fprintf(stderr, "Failed to allocate memory for intermediate_8\n"); return; }
+  float* intermediate_8_data = (float*)(workspace + 31457280);
   Tensor<float> intermediate_8_tensor = {intermediate_8_data, intermediate_8_shape, 4};
-  float* intermediate_9_data = (float*)allocator.allocate(12582912);
-  if (!intermediate_9_data) { fprintf(stderr, "Failed to allocate memory for intermediate_9\n"); return; }
+  float* intermediate_9_data = (float*)(workspace + 44040192);
   Tensor<float> intermediate_9_tensor = {intermediate_9_data, intermediate_9_shape, 4};
-  float* intermediate_10_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_10_data) { fprintf(stderr, "Failed to allocate memory for intermediate_10\n"); return; }
+  float* intermediate_10_data = (float*)(workspace + 0);
   Tensor<float> intermediate_10_tensor = {intermediate_10_data, intermediate_10_shape, 4};
-  float* intermediate_11_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_11_data) { fprintf(stderr, "Failed to allocate memory for intermediate_11\n"); return; }
+  float* intermediate_11_data = (float*)(workspace + 12582912);
   Tensor<float> intermediate_11_tensor = {intermediate_11_data, intermediate_11_shape, 3};
-  float* intermediate_12_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_12_data) { fprintf(stderr, "Failed to allocate memory for intermediate_12\n"); return; }
+  float* intermediate_12_data = (float*)(workspace + 0);
   Tensor<float> intermediate_12_tensor = {intermediate_12_data, intermediate_12_shape, 3};
-  float* intermediate_13_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_13_data) { fprintf(stderr, "Failed to allocate memory for intermediate_13\n"); return; }
-  Tensor<float> intermediate_13_tensor = {intermediate_13_data, intermediate_13_shape, 3};
-  float* intermediate_14_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_14_data) { fprintf(stderr, "Failed to allocate memory for intermediate_14\n"); return; }
+  Tensor<float> intermediate_13_tensor = intermediate_1_tensor; // In-place reuse
+  float* intermediate_14_data = (float*)(workspace + 0);
   Tensor<float> intermediate_14_tensor = {intermediate_14_data, intermediate_14_shape, 3};
-  float* intermediate_15_data = (float*)allocator.allocate(196608);
-  if (!intermediate_15_data) { fprintf(stderr, "Failed to allocate memory for intermediate_15\n"); return; }
+  float* intermediate_15_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_15_tensor = {intermediate_15_data, intermediate_15_shape, 2};
-  float* intermediate_16_data = (float*)allocator.allocate(196608);
-  if (!intermediate_16_data) { fprintf(stderr, "Failed to allocate memory for intermediate_16\n"); return; }
-  Tensor<float> intermediate_16_tensor = {intermediate_16_data, intermediate_16_shape, 2};
-  float* intermediate_17_data = (float*)allocator.allocate(49152);
-  if (!intermediate_17_data) { fprintf(stderr, "Failed to allocate memory for intermediate_17\n"); return; }
+  Tensor<float> intermediate_16_tensor = intermediate_15_tensor; // In-place reuse
+  float* intermediate_17_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_17_tensor = {intermediate_17_data, intermediate_17_shape, 2};
-  float* intermediate_18_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_18_data) { fprintf(stderr, "Failed to allocate memory for intermediate_18\n"); return; }
-  Tensor<float> intermediate_18_tensor = {intermediate_18_data, intermediate_18_shape, 3};
-  float* intermediate_19_data = (float*)allocator.allocate(6291456);
-  if (!intermediate_19_data) { fprintf(stderr, "Failed to allocate memory for intermediate_19\n"); return; }
+  Tensor<float> intermediate_18_tensor = intermediate_14_tensor; // In-place reuse
+  float* intermediate_19_data = (float*)(workspace + 0);
   Tensor<float> intermediate_19_tensor = {intermediate_19_data, intermediate_19_shape, 3};
-  float* intermediate_20_data = (float*)allocator.allocate(49152);
-  if (!intermediate_20_data) { fprintf(stderr, "Failed to allocate memory for intermediate_20\n"); return; }
+  float* intermediate_20_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_20_tensor = {intermediate_20_data, intermediate_20_shape, 2};
-  float* intermediate_21_data = (float*)allocator.allocate(49152);
-  if (!intermediate_21_data) { fprintf(stderr, "Failed to allocate memory for intermediate_21\n"); return; }
+  float* intermediate_21_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_21_tensor = {intermediate_21_data, intermediate_21_shape, 2};
-  float* intermediate_22_data = (float*)allocator.allocate(49152);
-  if (!intermediate_22_data) { fprintf(stderr, "Failed to allocate memory for intermediate_22\n"); return; }
+  float* intermediate_22_data = (float*)(workspace + 132366336);
   Tensor<float> intermediate_22_tensor = {intermediate_22_data, intermediate_22_shape, 2};
-  float* intermediate_23_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_23_data) { fprintf(stderr, "Failed to allocate memory for intermediate_23\n"); return; }
+  float* intermediate_23_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_23_tensor = {intermediate_23_data, intermediate_23_shape, 4};
-  float* intermediate_24_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_24_data) { fprintf(stderr, "Failed to allocate memory for intermediate_24\n"); return; }
+  float* intermediate_24_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_24_tensor = {intermediate_24_data, intermediate_24_shape, 4};
-  float* intermediate_25_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_25_data) { fprintf(stderr, "Failed to allocate memory for intermediate_25\n"); return; }
+  float* intermediate_25_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_25_tensor = {intermediate_25_data, intermediate_25_shape, 4};
-  float* intermediate_26_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_26_data) { fprintf(stderr, "Failed to allocate memory for intermediate_26\n"); return; }
+  float* intermediate_26_data = (float*)(workspace + 132415488);
   Tensor<float> intermediate_26_tensor = {intermediate_26_data, intermediate_26_shape, 4};
-  float* intermediate_27_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_27_data) { fprintf(stderr, "Failed to allocate memory for intermediate_27\n"); return; }
+  float* intermediate_27_data = (float*)(workspace + 245661696);
   Tensor<float> intermediate_27_tensor = {intermediate_27_data, intermediate_27_shape, 4};
-  float* intermediate_28_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_28_data) { fprintf(stderr, "Failed to allocate memory for intermediate_28\n"); return; }
+  float* intermediate_28_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_28_tensor = {intermediate_28_data, intermediate_28_shape, 4};
-  float* intermediate_29_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_29_data) { fprintf(stderr, "Failed to allocate memory for intermediate_29\n"); return; }
+  float* intermediate_29_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_29_tensor = {intermediate_29_data, intermediate_29_shape, 3};
-  float* intermediate_30_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_30_data) { fprintf(stderr, "Failed to allocate memory for intermediate_30\n"); return; }
+  float* intermediate_30_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_30_tensor = {intermediate_30_data, intermediate_30_shape, 3};
-  float* intermediate_31_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_31_data) { fprintf(stderr, "Failed to allocate memory for intermediate_31\n"); return; }
-  Tensor<float> intermediate_31_tensor = {intermediate_31_data, intermediate_31_shape, 3};
-  float* intermediate_32_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_32_data) { fprintf(stderr, "Failed to allocate memory for intermediate_32\n"); return; }
+  Tensor<float> intermediate_31_tensor = intermediate_30_tensor; // In-place reuse
+  float* intermediate_32_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_32_tensor = {intermediate_32_data, intermediate_32_shape, 3};
-  float* intermediate_33_data = (float*)allocator.allocate(196608);
-  if (!intermediate_33_data) { fprintf(stderr, "Failed to allocate memory for intermediate_33\n"); return; }
+  float* intermediate_33_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_33_tensor = {intermediate_33_data, intermediate_33_shape, 2};
-  float* intermediate_34_data = (float*)allocator.allocate(196608);
-  if (!intermediate_34_data) { fprintf(stderr, "Failed to allocate memory for intermediate_34\n"); return; }
-  Tensor<float> intermediate_34_tensor = {intermediate_34_data, intermediate_34_shape, 2};
-  float* intermediate_35_data = (float*)allocator.allocate(49152);
-  if (!intermediate_35_data) { fprintf(stderr, "Failed to allocate memory for intermediate_35\n"); return; }
+  Tensor<float> intermediate_34_tensor = intermediate_33_tensor; // In-place reuse
+  float* intermediate_35_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_35_tensor = {intermediate_35_data, intermediate_35_shape, 2};
-  float* intermediate_36_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_36_data) { fprintf(stderr, "Failed to allocate memory for intermediate_36\n"); return; }
-  Tensor<float> intermediate_36_tensor = {intermediate_36_data, intermediate_36_shape, 3};
-  float* intermediate_37_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_37_data) { fprintf(stderr, "Failed to allocate memory for intermediate_37\n"); return; }
+  Tensor<float> intermediate_36_tensor = intermediate_32_tensor; // In-place reuse
+  float* intermediate_37_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_37_tensor = {intermediate_37_data, intermediate_37_shape, 3};
-  float* intermediate_38_data = (float*)allocator.allocate(49152);
-  if (!intermediate_38_data) { fprintf(stderr, "Failed to allocate memory for intermediate_38\n"); return; }
+  float* intermediate_38_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_38_tensor = {intermediate_38_data, intermediate_38_shape, 2};
-  float* intermediate_39_data = (float*)allocator.allocate(49152);
-  if (!intermediate_39_data) { fprintf(stderr, "Failed to allocate memory for intermediate_39\n"); return; }
+  float* intermediate_39_data = (float*)(workspace + 132366336);
   Tensor<float> intermediate_39_tensor = {intermediate_39_data, intermediate_39_shape, 2};
-  float* intermediate_40_data = (float*)allocator.allocate(49152);
-  if (!intermediate_40_data) { fprintf(stderr, "Failed to allocate memory for intermediate_40\n"); return; }
+  float* intermediate_40_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_40_tensor = {intermediate_40_data, intermediate_40_shape, 2};
-  float* intermediate_41_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_41_data) { fprintf(stderr, "Failed to allocate memory for intermediate_41\n"); return; }
+  float* intermediate_41_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_41_tensor = {intermediate_41_data, intermediate_41_shape, 4};
-  float* intermediate_42_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_42_data) { fprintf(stderr, "Failed to allocate memory for intermediate_42\n"); return; }
+  float* intermediate_42_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_42_tensor = {intermediate_42_data, intermediate_42_shape, 4};
-  float* intermediate_43_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_43_data) { fprintf(stderr, "Failed to allocate memory for intermediate_43\n"); return; }
+  float* intermediate_43_data = (float*)(workspace + 113246208);
   Tensor<float> intermediate_43_tensor = {intermediate_43_data, intermediate_43_shape, 4};
-  float* intermediate_44_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_44_data) { fprintf(stderr, "Failed to allocate memory for intermediate_44\n"); return; }
+  float* intermediate_44_data = (float*)(workspace + 132415488);
   Tensor<float> intermediate_44_tensor = {intermediate_44_data, intermediate_44_shape, 4};
-  float* intermediate_45_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_45_data) { fprintf(stderr, "Failed to allocate memory for intermediate_45\n"); return; }
+  float* intermediate_45_data = (float*)(workspace + 245661696);
   Tensor<float> intermediate_45_tensor = {intermediate_45_data, intermediate_45_shape, 4};
-  float* intermediate_46_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_46_data) { fprintf(stderr, "Failed to allocate memory for intermediate_46\n"); return; }
+  float* intermediate_46_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_46_tensor = {intermediate_46_data, intermediate_46_shape, 4};
-  float* intermediate_47_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_47_data) { fprintf(stderr, "Failed to allocate memory for intermediate_47\n"); return; }
+  float* intermediate_47_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_47_tensor = {intermediate_47_data, intermediate_47_shape, 3};
-  float* intermediate_48_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_48_data) { fprintf(stderr, "Failed to allocate memory for intermediate_48\n"); return; }
+  float* intermediate_48_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_48_tensor = {intermediate_48_data, intermediate_48_shape, 3};
-  float* intermediate_49_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_49_data) { fprintf(stderr, "Failed to allocate memory for intermediate_49\n"); return; }
-  Tensor<float> intermediate_49_tensor = {intermediate_49_data, intermediate_49_shape, 3};
-  float* intermediate_50_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_50_data) { fprintf(stderr, "Failed to allocate memory for intermediate_50\n"); return; }
+  Tensor<float> intermediate_49_tensor = intermediate_37_tensor; // In-place reuse
+  float* intermediate_50_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_50_tensor = {intermediate_50_data, intermediate_50_shape, 3};
-  float* intermediate_51_data = (float*)allocator.allocate(196608);
-  if (!intermediate_51_data) { fprintf(stderr, "Failed to allocate memory for intermediate_51\n"); return; }
+  float* intermediate_51_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_51_tensor = {intermediate_51_data, intermediate_51_shape, 2};
-  float* intermediate_52_data = (float*)allocator.allocate(196608);
-  if (!intermediate_52_data) { fprintf(stderr, "Failed to allocate memory for intermediate_52\n"); return; }
-  Tensor<float> intermediate_52_tensor = {intermediate_52_data, intermediate_52_shape, 2};
-  float* intermediate_53_data = (float*)allocator.allocate(49152);
-  if (!intermediate_53_data) { fprintf(stderr, "Failed to allocate memory for intermediate_53\n"); return; }
+  Tensor<float> intermediate_52_tensor = intermediate_51_tensor; // In-place reuse
+  float* intermediate_53_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_53_tensor = {intermediate_53_data, intermediate_53_shape, 2};
-  float* intermediate_54_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_54_data) { fprintf(stderr, "Failed to allocate memory for intermediate_54\n"); return; }
-  Tensor<float> intermediate_54_tensor = {intermediate_54_data, intermediate_54_shape, 3};
-  float* intermediate_55_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_55_data) { fprintf(stderr, "Failed to allocate memory for intermediate_55\n"); return; }
+  Tensor<float> intermediate_54_tensor = intermediate_50_tensor; // In-place reuse
+  float* intermediate_55_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_55_tensor = {intermediate_55_data, intermediate_55_shape, 3};
-  float* intermediate_56_data = (float*)allocator.allocate(49152);
-  if (!intermediate_56_data) { fprintf(stderr, "Failed to allocate memory for intermediate_56\n"); return; }
+  float* intermediate_56_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_56_tensor = {intermediate_56_data, intermediate_56_shape, 2};
-  float* intermediate_57_data = (float*)allocator.allocate(49152);
-  if (!intermediate_57_data) { fprintf(stderr, "Failed to allocate memory for intermediate_57\n"); return; }
+  float* intermediate_57_data = (float*)(workspace + 132366336);
   Tensor<float> intermediate_57_tensor = {intermediate_57_data, intermediate_57_shape, 2};
-  float* intermediate_58_data = (float*)allocator.allocate(49152);
-  if (!intermediate_58_data) { fprintf(stderr, "Failed to allocate memory for intermediate_58\n"); return; }
+  float* intermediate_58_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_58_tensor = {intermediate_58_data, intermediate_58_shape, 2};
-  float* intermediate_59_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_59_data) { fprintf(stderr, "Failed to allocate memory for intermediate_59\n"); return; }
+  float* intermediate_59_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_59_tensor = {intermediate_59_data, intermediate_59_shape, 4};
-  float* intermediate_60_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_60_data) { fprintf(stderr, "Failed to allocate memory for intermediate_60\n"); return; }
+  float* intermediate_60_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_60_tensor = {intermediate_60_data, intermediate_60_shape, 4};
-  float* intermediate_61_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_61_data) { fprintf(stderr, "Failed to allocate memory for intermediate_61\n"); return; }
+  float* intermediate_61_data = (float*)(workspace + 113246208);
   Tensor<float> intermediate_61_tensor = {intermediate_61_data, intermediate_61_shape, 4};
-  float* intermediate_62_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_62_data) { fprintf(stderr, "Failed to allocate memory for intermediate_62\n"); return; }
+  float* intermediate_62_data = (float*)(workspace + 132415488);
   Tensor<float> intermediate_62_tensor = {intermediate_62_data, intermediate_62_shape, 4};
-  float* intermediate_63_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_63_data) { fprintf(stderr, "Failed to allocate memory for intermediate_63\n"); return; }
+  float* intermediate_63_data = (float*)(workspace + 245661696);
   Tensor<float> intermediate_63_tensor = {intermediate_63_data, intermediate_63_shape, 4};
-  float* intermediate_64_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_64_data) { fprintf(stderr, "Failed to allocate memory for intermediate_64\n"); return; }
+  float* intermediate_64_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_64_tensor = {intermediate_64_data, intermediate_64_shape, 4};
-  float* intermediate_65_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_65_data) { fprintf(stderr, "Failed to allocate memory for intermediate_65\n"); return; }
+  float* intermediate_65_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_65_tensor = {intermediate_65_data, intermediate_65_shape, 3};
-  float* intermediate_66_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_66_data) { fprintf(stderr, "Failed to allocate memory for intermediate_66\n"); return; }
+  float* intermediate_66_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_66_tensor = {intermediate_66_data, intermediate_66_shape, 3};
-  float* intermediate_67_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_67_data) { fprintf(stderr, "Failed to allocate memory for intermediate_67\n"); return; }
-  Tensor<float> intermediate_67_tensor = {intermediate_67_data, intermediate_67_shape, 3};
-  float* intermediate_68_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_68_data) { fprintf(stderr, "Failed to allocate memory for intermediate_68\n"); return; }
+  Tensor<float> intermediate_67_tensor = intermediate_55_tensor; // In-place reuse
+  float* intermediate_68_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_68_tensor = {intermediate_68_data, intermediate_68_shape, 3};
-  float* intermediate_69_data = (float*)allocator.allocate(196608);
-  if (!intermediate_69_data) { fprintf(stderr, "Failed to allocate memory for intermediate_69\n"); return; }
+  float* intermediate_69_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_69_tensor = {intermediate_69_data, intermediate_69_shape, 2};
-  float* intermediate_70_data = (float*)allocator.allocate(196608);
-  if (!intermediate_70_data) { fprintf(stderr, "Failed to allocate memory for intermediate_70\n"); return; }
-  Tensor<float> intermediate_70_tensor = {intermediate_70_data, intermediate_70_shape, 2};
-  float* intermediate_71_data = (float*)allocator.allocate(49152);
-  if (!intermediate_71_data) { fprintf(stderr, "Failed to allocate memory for intermediate_71\n"); return; }
+  Tensor<float> intermediate_70_tensor = intermediate_69_tensor; // In-place reuse
+  float* intermediate_71_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_71_tensor = {intermediate_71_data, intermediate_71_shape, 2};
-  float* intermediate_72_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_72_data) { fprintf(stderr, "Failed to allocate memory for intermediate_72\n"); return; }
-  Tensor<float> intermediate_72_tensor = {intermediate_72_data, intermediate_72_shape, 3};
-  float* intermediate_73_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_73_data) { fprintf(stderr, "Failed to allocate memory for intermediate_73\n"); return; }
+  Tensor<float> intermediate_72_tensor = intermediate_68_tensor; // In-place reuse
+  float* intermediate_73_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_73_tensor = {intermediate_73_data, intermediate_73_shape, 3};
-  float* intermediate_74_data = (float*)allocator.allocate(49152);
-  if (!intermediate_74_data) { fprintf(stderr, "Failed to allocate memory for intermediate_74\n"); return; }
+  float* intermediate_74_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_74_tensor = {intermediate_74_data, intermediate_74_shape, 2};
-  float* intermediate_75_data = (float*)allocator.allocate(49152);
-  if (!intermediate_75_data) { fprintf(stderr, "Failed to allocate memory for intermediate_75\n"); return; }
+  float* intermediate_75_data = (float*)(workspace + 132366336);
   Tensor<float> intermediate_75_tensor = {intermediate_75_data, intermediate_75_shape, 2};
-  float* intermediate_76_data = (float*)allocator.allocate(49152);
-  if (!intermediate_76_data) { fprintf(stderr, "Failed to allocate memory for intermediate_76\n"); return; }
+  float* intermediate_76_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_76_tensor = {intermediate_76_data, intermediate_76_shape, 2};
-  float* intermediate_77_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_77_data) { fprintf(stderr, "Failed to allocate memory for intermediate_77\n"); return; }
+  float* intermediate_77_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_77_tensor = {intermediate_77_data, intermediate_77_shape, 4};
-  float* intermediate_78_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_78_data) { fprintf(stderr, "Failed to allocate memory for intermediate_78\n"); return; }
+  float* intermediate_78_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_78_tensor = {intermediate_78_data, intermediate_78_shape, 4};
-  float* intermediate_79_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_79_data) { fprintf(stderr, "Failed to allocate memory for intermediate_79\n"); return; }
+  float* intermediate_79_data = (float*)(workspace + 113246208);
   Tensor<float> intermediate_79_tensor = {intermediate_79_data, intermediate_79_shape, 4};
-  float* intermediate_80_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_80_data) { fprintf(stderr, "Failed to allocate memory for intermediate_80\n"); return; }
+  float* intermediate_80_data = (float*)(workspace + 132415488);
   Tensor<float> intermediate_80_tensor = {intermediate_80_data, intermediate_80_shape, 4};
-  float* intermediate_81_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_81_data) { fprintf(stderr, "Failed to allocate memory for intermediate_81\n"); return; }
+  float* intermediate_81_data = (float*)(workspace + 245661696);
   Tensor<float> intermediate_81_tensor = {intermediate_81_data, intermediate_81_shape, 4};
-  float* intermediate_82_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_82_data) { fprintf(stderr, "Failed to allocate memory for intermediate_82\n"); return; }
+  float* intermediate_82_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_82_tensor = {intermediate_82_data, intermediate_82_shape, 4};
-  float* intermediate_83_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_83_data) { fprintf(stderr, "Failed to allocate memory for intermediate_83\n"); return; }
+  float* intermediate_83_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_83_tensor = {intermediate_83_data, intermediate_83_shape, 3};
-  float* intermediate_84_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_84_data) { fprintf(stderr, "Failed to allocate memory for intermediate_84\n"); return; }
+  float* intermediate_84_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_84_tensor = {intermediate_84_data, intermediate_84_shape, 3};
-  float* intermediate_85_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_85_data) { fprintf(stderr, "Failed to allocate memory for intermediate_85\n"); return; }
-  Tensor<float> intermediate_85_tensor = {intermediate_85_data, intermediate_85_shape, 3};
-  float* intermediate_86_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_86_data) { fprintf(stderr, "Failed to allocate memory for intermediate_86\n"); return; }
+  Tensor<float> intermediate_85_tensor = intermediate_73_tensor; // In-place reuse
+  float* intermediate_86_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_86_tensor = {intermediate_86_data, intermediate_86_shape, 3};
-  float* intermediate_87_data = (float*)allocator.allocate(196608);
-  if (!intermediate_87_data) { fprintf(stderr, "Failed to allocate memory for intermediate_87\n"); return; }
+  float* intermediate_87_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_87_tensor = {intermediate_87_data, intermediate_87_shape, 2};
-  float* intermediate_88_data = (float*)allocator.allocate(196608);
-  if (!intermediate_88_data) { fprintf(stderr, "Failed to allocate memory for intermediate_88\n"); return; }
-  Tensor<float> intermediate_88_tensor = {intermediate_88_data, intermediate_88_shape, 2};
-  float* intermediate_89_data = (float*)allocator.allocate(49152);
-  if (!intermediate_89_data) { fprintf(stderr, "Failed to allocate memory for intermediate_89\n"); return; }
+  Tensor<float> intermediate_88_tensor = intermediate_87_tensor; // In-place reuse
+  float* intermediate_89_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_89_tensor = {intermediate_89_data, intermediate_89_shape, 2};
-  float* intermediate_90_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_90_data) { fprintf(stderr, "Failed to allocate memory for intermediate_90\n"); return; }
-  Tensor<float> intermediate_90_tensor = {intermediate_90_data, intermediate_90_shape, 3};
-  float* intermediate_91_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_91_data) { fprintf(stderr, "Failed to allocate memory for intermediate_91\n"); return; }
+  Tensor<float> intermediate_90_tensor = intermediate_86_tensor; // In-place reuse
+  float* intermediate_91_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_91_tensor = {intermediate_91_data, intermediate_91_shape, 3};
-  float* intermediate_92_data = (float*)allocator.allocate(49152);
-  if (!intermediate_92_data) { fprintf(stderr, "Failed to allocate memory for intermediate_92\n"); return; }
+  float* intermediate_92_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_92_tensor = {intermediate_92_data, intermediate_92_shape, 2};
-  float* intermediate_93_data = (float*)allocator.allocate(49152);
-  if (!intermediate_93_data) { fprintf(stderr, "Failed to allocate memory for intermediate_93\n"); return; }
+  float* intermediate_93_data = (float*)(workspace + 132366336);
   Tensor<float> intermediate_93_tensor = {intermediate_93_data, intermediate_93_shape, 2};
-  float* intermediate_94_data = (float*)allocator.allocate(49152);
-  if (!intermediate_94_data) { fprintf(stderr, "Failed to allocate memory for intermediate_94\n"); return; }
+  float* intermediate_94_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_94_tensor = {intermediate_94_data, intermediate_94_shape, 2};
-  float* intermediate_95_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_95_data) { fprintf(stderr, "Failed to allocate memory for intermediate_95\n"); return; }
+  float* intermediate_95_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_95_tensor = {intermediate_95_data, intermediate_95_shape, 4};
-  float* intermediate_96_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_96_data) { fprintf(stderr, "Failed to allocate memory for intermediate_96\n"); return; }
+  float* intermediate_96_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_96_tensor = {intermediate_96_data, intermediate_96_shape, 4};
-  float* intermediate_97_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_97_data) { fprintf(stderr, "Failed to allocate memory for intermediate_97\n"); return; }
+  float* intermediate_97_data = (float*)(workspace + 113246208);
   Tensor<float> intermediate_97_tensor = {intermediate_97_data, intermediate_97_shape, 4};
-  float* intermediate_98_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_98_data) { fprintf(stderr, "Failed to allocate memory for intermediate_98\n"); return; }
+  float* intermediate_98_data = (float*)(workspace + 132415488);
   Tensor<float> intermediate_98_tensor = {intermediate_98_data, intermediate_98_shape, 4};
-  float* intermediate_99_data = (float*)allocator.allocate(113246208);
-  if (!intermediate_99_data) { fprintf(stderr, "Failed to allocate memory for intermediate_99\n"); return; }
+  float* intermediate_99_data = (float*)(workspace + 245661696);
   Tensor<float> intermediate_99_tensor = {intermediate_99_data, intermediate_99_shape, 4};
-  float* intermediate_100_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_100_data) { fprintf(stderr, "Failed to allocate memory for intermediate_100\n"); return; }
+  float* intermediate_100_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_100_tensor = {intermediate_100_data, intermediate_100_shape, 4};
-  float* intermediate_101_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_101_data) { fprintf(stderr, "Failed to allocate memory for intermediate_101\n"); return; }
+  float* intermediate_101_data = (float*)(workspace + 94371840);
   Tensor<float> intermediate_101_tensor = {intermediate_101_data, intermediate_101_shape, 3};
-  float* intermediate_102_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_102_data) { fprintf(stderr, "Failed to allocate memory for intermediate_102\n"); return; }
+  float* intermediate_102_data = (float*)(workspace + 75497472);
   Tensor<float> intermediate_102_tensor = {intermediate_102_data, intermediate_102_shape, 3};
-  float* intermediate_103_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_103_data) { fprintf(stderr, "Failed to allocate memory for intermediate_103\n"); return; }
-  Tensor<float> intermediate_103_tensor = {intermediate_103_data, intermediate_103_shape, 3};
-  float* intermediate_104_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_104_data) { fprintf(stderr, "Failed to allocate memory for intermediate_104\n"); return; }
+  Tensor<float> intermediate_103_tensor = intermediate_91_tensor; // In-place reuse
+  float* intermediate_104_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_104_tensor = {intermediate_104_data, intermediate_104_shape, 3};
-  float* intermediate_105_data = (float*)allocator.allocate(196608);
-  if (!intermediate_105_data) { fprintf(stderr, "Failed to allocate memory for intermediate_105\n"); return; }
+  float* intermediate_105_data = (float*)(workspace + 132120576);
   Tensor<float> intermediate_105_tensor = {intermediate_105_data, intermediate_105_shape, 2};
-  float* intermediate_106_data = (float*)allocator.allocate(196608);
-  if (!intermediate_106_data) { fprintf(stderr, "Failed to allocate memory for intermediate_106\n"); return; }
-  Tensor<float> intermediate_106_tensor = {intermediate_106_data, intermediate_106_shape, 2};
-  float* intermediate_107_data = (float*)allocator.allocate(49152);
-  if (!intermediate_107_data) { fprintf(stderr, "Failed to allocate memory for intermediate_107\n"); return; }
+  Tensor<float> intermediate_106_tensor = intermediate_105_tensor; // In-place reuse
+  float* intermediate_107_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_107_tensor = {intermediate_107_data, intermediate_107_shape, 2};
-  float* intermediate_108_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_108_data) { fprintf(stderr, "Failed to allocate memory for intermediate_108\n"); return; }
-  Tensor<float> intermediate_108_tensor = {intermediate_108_data, intermediate_108_shape, 3};
-  float* intermediate_109_data = (float*)allocator.allocate(18874368);
-  if (!intermediate_109_data) { fprintf(stderr, "Failed to allocate memory for intermediate_109\n"); return; }
+  Tensor<float> intermediate_108_tensor = intermediate_104_tensor; // In-place reuse
+  float* intermediate_109_data = (float*)(workspace + 56623104);
   Tensor<float> intermediate_109_tensor = {intermediate_109_data, intermediate_109_shape, 3};
-  float* intermediate_110_data = (float*)allocator.allocate(8320);
-  if (!intermediate_110_data) { fprintf(stderr, "Failed to allocate memory for intermediate_110\n"); return; }
+  float* intermediate_110_data = (float*)(workspace + 132317184);
   Tensor<float> intermediate_110_tensor = {intermediate_110_data, intermediate_110_shape, 2};
   Tensor<int> input = {(int*)input_data, input_shape, input_dims};
   Tensor<float> output = {output_data, output_shape, output_dims};
