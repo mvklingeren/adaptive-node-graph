@@ -213,6 +213,13 @@ def save_weights_binary(model, filename="weights.bin"):
     return len(params)
 
 def train_model():
+    # Check for GPU availability
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"CUDA version: {torch.version.cuda}")
+    
     # Load Shakespeare text
     try:
         with open('src/cuda-work/shakespeare.txt', 'r') as f:
@@ -231,27 +238,38 @@ def train_model():
     num_heads = 6
     num_layers = 6
     block_size = 128
-    batch_size = 4  # Smaller for demo
+    batch_size = 32 if device.type == 'cuda' else 4  # Larger batch size for GPU
     learning_rate = 1e-4
-    epochs = 3
+    epochs = 10 if device.type == 'cuda' else 3  # More epochs for GPU
     
-    # Create model
+    # Create model and move to device
     model = ShakespeareTransformer(vocab_size, embed_dim, num_heads, num_layers)
+    model = model.to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Model moved to {device}")
     
     # Create dataset and dataloader
     dataset = ShakespeareDataset(text, tokenizer, block_size)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4 if device.type == 'cuda' else 0)
     
     # Optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
     
+    print(f"\nStarting training on {device}...")
+    print(f"Batch size: {batch_size}, Epochs: {epochs}")
+    print(f"Dataset size: {len(dataset):,} samples")
+    
     # Training loop
     model.train()
     for epoch in range(epochs):
         total_loss = 0
+        num_batches = 0
+        
         for batch_idx, (x, y) in enumerate(dataloader):
+            # Move data to device
+            x, y = x.to(device), y.to(device)
+            
             optimizer.zero_grad()
             
             logits = model(x)  # [batch, seq, vocab]
@@ -262,37 +280,62 @@ def train_model():
             
             loss = criterion(logits, y)
             loss.backward()
+            
+            # Gradient clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
             
             total_loss += loss.item()
+            num_batches += 1
             
-            if batch_idx % 100 == 0:
+            if batch_idx % 50 == 0:  # More frequent updates
                 print(f"Epoch {epoch+1}/{epochs}, Batch {batch_idx}, Loss: {loss.item():.4f}")
         
-        avg_loss = total_loss / len(dataloader)
+        avg_loss = total_loss / num_batches
         print(f"Epoch {epoch+1} completed. Average loss: {avg_loss:.4f}")
+        
+        # Save checkpoint every few epochs
+        if (epoch + 1) % 5 == 0:
+            checkpoint_name = f"checkpoint_epoch_{epoch+1}.bin"
+            save_weights_binary(model, checkpoint_name)
+            print(f"Checkpoint saved: {checkpoint_name}")
     
-    # Save the trained weights
-    save_weights_binary(model, "shakespeare_weights.bin")
+    # Save the final trained weights
+    save_weights_binary(model, "weights.bin")
+    print("Final weights saved as weights.bin")
     
     # Test generation
     print("\n=== Testing Generation ===")
     model.eval()
     prompt = "To be or not to be"
-    input_ids = torch.tensor([tokenizer.encode(prompt)], dtype=torch.long)
+    input_ids = torch.tensor([tokenizer.encode(prompt)], dtype=torch.long).to(device)
+    
+    print(f"Prompt: '{prompt}'")
+    print("Generated text: ", end="")
     
     with torch.no_grad():
-        for _ in range(50):  # Generate 50 characters
+        for _ in range(100):  # Generate 100 characters
             logits = model(input_ids)
-            next_token = torch.argmax(logits[0, -1, :]).item()
-            input_ids = torch.cat([input_ids, torch.tensor([[next_token]])], dim=1)
+            
+            # Use temperature sampling for more interesting generation
+            temperature = 0.8
+            probs = torch.softmax(logits[0, -1, :] / temperature, dim=-1)
+            next_token = torch.multinomial(probs, 1).item()
+            
+            input_ids = torch.cat([input_ids, torch.tensor([[next_token]], device=device)], dim=1)
             
             # Keep only the last 128 tokens (block_size)
             if input_ids.size(1) > 128:
                 input_ids = input_ids[:, -128:]
+            
+            # Print character
+            char = tokenizer.idx_to_char.get(next_token, '?')
+            print(char, end="", flush=True)
     
-    generated_text = tokenizer.decode(input_ids[0].tolist())
-    print(f"Generated: {generated_text}")
+    print("\n\n🎉 Training completed!")
+    if device.type == 'cuda':
+        print(f"GPU memory used: {torch.cuda.max_memory_allocated(device) / 1024**2:.1f} MB")
 
 if __name__ == "__main__":
     train_model() 
