@@ -8,7 +8,7 @@ TARGET = run_model
 
 # Source files
 CPP_SRC = main.cpp
-CU_SRC = generated-shakespear-llm-kernel.cu
+CU_SRC = ./dist/generated-shakespear-llm-kernel.cu
 
 # Object files
 CPP_OBJ = $(CPP_SRC:.cpp=.o)

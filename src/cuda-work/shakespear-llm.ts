@@ -77,7 +77,8 @@ async function main() {
 
     // 2. Model Hyperparameters
     const batchSize = 32;
-    const blockSize = 128; // Max sequence length
+    const blockSize = 128; // Sequence length for this specific training run
+    const modelMaxLen = 512; // Maximum sequence length the model is designed to handle
     const embedDim = 384;
     const numHeads = 6;
     const numLayers = 6;
@@ -88,13 +89,13 @@ async function main() {
     // 3. Build the Language Model
     console.log("\nBuilding the Language Model...");
     const model = new LanguageModel(
-        runtime,
-        tokenizer.vocabSize,
-        embedDim,
-        numHeads,
-        numLayers,
-        ffnHiddenDim,
-        blockSize
+      runtime,
+      tokenizer.vocabSize,
+      embedDim,
+      numHeads,
+      numLayers,
+      ffnHiddenDim,
+      modelMaxLen // Pass the model's maximum sequence length
     );
     await model.initialize();
     model.build();
@@ -110,7 +111,10 @@ async function main() {
     console.log(`- Generated Kernel ID: ${kernel.id}`);
     console.log(`- Required workspace size: ${workspaceSize} bytes`);
 
-    const outputPath = path.join(process.cwd(), 'generated-shakespear-llm-kernel.cu');
+    const outputPath = path.join(
+      process.cwd(),
+      "/dist/generated-shakespear-llm-kernel.cu"
+    );
     fs.writeFileSync(outputPath, kernelCode);
     console.log(`\nKernel code written to ${outputPath}`);
 
