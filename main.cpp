@@ -7,6 +7,8 @@
 #include <set>
 #include <random>
 #include <algorithm>
+#include <functional>
+#include <limits>
 #include <cuda_runtime.h>
 
 // Forward declaration of the main CUDA execution function from the .cu file
@@ -103,10 +105,107 @@ struct DeviceTensor {
 };
 
 // ============================================================================
+// Text Generation Functions
+// ============================================================================
+
+std::string generateText(
+    const CharacterTokenizer &tokenizer,
+    const std::string &prompt,
+    int maxLength,
+    void **param_data_ptrs,
+    const int **param_shape_ptrs,
+    const int *param_dims_array,
+    const char **param_dtypes,
+    char *workspace,
+    size_t workspaceSize)
+{
+    std::vector<int> tokens = tokenizer.encode(prompt);
+    std::string result = prompt;
+
+    const int batchSize = 1; // Single sequence generation
+    const int blockSize = 128;
+    const int vocabSize = tokenizer.vocabSize;
+
+    // Allocate memory for generation
+    DeviceTensor d_input, d_output;
+    d_input.allocate<int>({batchSize, blockSize});
+    d_output.allocate<float>({batchSize, blockSize, vocabSize});
+    std::vector<float> h_output_data(batchSize * blockSize * vocabSize);
+
+    std::mt19937 rng(std::random_device{}());
+
+    for (int i = 0; i < maxLength; i++)
+    {
+        // Prepare input (last blockSize tokens)
+        std::vector<int> input_tokens(blockSize, 0);
+        int start_idx = std::max(0, (int)tokens.size() - blockSize);
+        for (int j = 0; j < blockSize && start_idx + j < tokens.size(); j++)
+        {
+            input_tokens[j] = tokens[start_idx + j];
+        }
+
+        // Copy to device
+        cudaMemcpy(d_input.data, input_tokens.data(), d_input.bytes, cudaMemcpyHostToDevice);
+
+        // Run model
+        executeGraph(
+            d_input.data, d_input.shape.data(), d_input.shape.size(), "int32",
+            d_output.data, d_output.shape.data(), d_output.shape.size(), "float32",
+            param_data_ptrs, param_shape_ptrs, param_dims_array, param_dtypes, 100,
+            workspace, workspaceSize);
+
+        // Get output
+        cudaMemcpy(h_output_data.data(), d_output.data, d_output.bytes, cudaMemcpyDeviceToHost);
+
+        // Sample next token from the last position
+        int last_pos = std::min((int)tokens.size(), blockSize - 1);
+        std::vector<float> logits(vocabSize);
+        for (int v = 0; v < vocabSize; v++)
+        {
+            logits[v] = h_output_data[last_pos * vocabSize + v];
+        }
+
+        // Apply temperature and sample
+        float temperature = 0.8f;
+        for (float &logit : logits)
+            logit /= temperature;
+
+        // Softmax
+        float max_logit = *std::max_element(logits.begin(), logits.end());
+        float sum = 0.0f;
+        for (float &logit : logits)
+        {
+            logit = std::exp(logit - max_logit);
+            sum += logit;
+        }
+        for (float &logit : logits)
+            logit /= sum;
+
+        // Sample
+        std::discrete_distribution<int> dist(logits.begin(), logits.end());
+        int next_token = dist(rng);
+
+        tokens.push_back(next_token);
+
+        // Convert token to character and add to result
+        if (tokenizer.idxToChar.find(next_token) != tokenizer.idxToChar.end())
+        {
+            result += tokenizer.idxToChar.at(next_token);
+            std::cout << tokenizer.idxToChar.at(next_token) << std::flush;
+        }
+    }
+
+    d_input.free();
+    d_output.free();
+    return result;
+}
+
+// ============================================================================
 // Main Host Function
 // ============================================================================
 
-int main() {
+int main(int argc, char *argv[])
+{
     // 1. Model Hyperparameters
     const int batchSize = 32;
     const int blockSize = 128;
@@ -122,26 +221,72 @@ int main() {
     const size_t workspaceSize = WORKSPACE_SIZE_MB * 1024ULL * 1024ULL; // Convert MB to bytes
     std::cout << "Using workspace size: " << WORKSPACE_SIZE_MB << "MB (" << workspaceSize << " bytes)" << std::endl;
 
-    // 2. Load and Tokenize Data
-    std::cout << "Loading Shakespeare dataset..." << std::endl;
-    std::ifstream file("src/cuda-work/shakespeare.txt");
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open shakespeare.txt" << std::endl;
-        return 1;
+    // 2. Handle input text from command line or default to file
+    std::string inputText;
+    bool useFile = true;
+
+    if (argc > 1)
+    {
+        // Use command line argument as input text
+        inputText = argv[1];
+        useFile = false;
+        std::cout << "Using command line input: \"" << inputText << "\"" << std::endl;
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string text = buffer.str();
+    else
+    {
+        // Load Shakespeare dataset for tokenizer vocabulary
+        std::cout << "Loading Shakespeare dataset for vocabulary..." << std::endl;
+        std::ifstream file("src/cuda-work/shakespeare.txt");
+        if (!file.is_open())
+        {
+            std::cerr << "Error: Could not open shakespeare.txt" << std::endl;
+            return 1;
+        }
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        inputText = buffer.str();
+        std::cout << "No command line input provided. Using Shakespeare dataset." << std::endl;
+    }
 
-    CharacterTokenizer tokenizer(text);
+    // Create tokenizer with full vocabulary
+    CharacterTokenizer tokenizer(inputText);
     const int vocabSize = tokenizer.vocabSize;
-    std::cout << "Dataset loaded: " << text.length() << " characters, " << vocabSize << " unique." << std::endl;
+    std::cout << "Vocabulary size: " << vocabSize << " unique characters." << std::endl;
 
-    // 3. Prepare a batch of data
-    std::vector<int> data = tokenizer.encode(text);
+    // 3. Prepare input data
     std::vector<int> h_input_data;
     std::vector<int> h_target_data;
-    getBatch(data, blockSize, batchSize, h_input_data, h_target_data);
+
+    if (useFile)
+    {
+        // Use random batch from file (training mode)
+        std::vector<int> data = tokenizer.encode(inputText);
+        getBatch(data, blockSize, batchSize, h_input_data, h_target_data);
+    }
+    else
+    {
+        // Use provided text (inference mode)
+        std::vector<int> encoded = tokenizer.encode(inputText);
+
+        // Pad or truncate to blockSize
+        h_input_data.resize(batchSize * blockSize, 0);
+        for (int b = 0; b < batchSize; b++)
+        {
+            for (int i = 0; i < blockSize && i < encoded.size(); i++)
+            {
+                h_input_data[b * blockSize + i] = encoded[i];
+            }
+        }
+
+        std::cout << "Input tokens: ";
+        for (int i = 0; i < std::min(10, (int)encoded.size()); i++)
+        {
+            std::cout << encoded[i] << " ";
+        }
+        if (encoded.size() > 10)
+            std::cout << "...";
+        std::cout << std::endl;
+    }
 
     // 4. Allocate Host and Device Memory
     std::cout << "Allocating memory..." << std::endl;
@@ -156,7 +301,7 @@ int main() {
     DeviceTensor d_workspace;
     cudaMalloc(&d_workspace.data, workspaceSize);
 
-    // Parameters
+    // Parameters - Load from file or initialize randomly
     std::vector<DeviceTensor> d_params(100);
     std::vector<std::vector<float>> h_params(100);
     std::mt19937 rng(1337);
@@ -167,9 +312,44 @@ int main() {
         long long total_elements = 1;
         for(int dim : shape) total_elements *= dim;
         h_params[i].resize(total_elements);
-        for(long long j = 0; j < total_elements; ++j) {
-            h_params[i][j] = weight_dist(rng);
+
+        // Try to load from weights file first
+        std::string weights_file = "weights.bin";
+        std::ifstream wfile(weights_file, std::ios::binary);
+        bool loaded = false;
+
+        if (wfile.is_open())
+        {
+            // Skip to this parameter's position in the file
+            size_t offset = 0;
+            for (int j = 0; j < i; j++)
+            {
+                long long prev_elements = 1;
+                for (int dim : param_shapes[j])
+                    prev_elements *= dim;
+                offset += prev_elements * sizeof(float);
+            }
+            wfile.seekg(offset);
+
+            // Read this parameter's data
+            wfile.read(reinterpret_cast<char *>(h_params[i].data()), total_elements * sizeof(float));
+            loaded = wfile.good();
         }
+
+        if (!loaded)
+        {
+            // Fallback to random initialization
+            std::cout << "No trained weights found, using random initialization for param " << i << std::endl;
+            for (long long j = 0; j < total_elements; ++j)
+            {
+                h_params[i][j] = weight_dist(rng);
+            }
+        }
+        else
+        {
+            std::cout << "Loaded trained weights for param " << i << std::endl;
+        }
+
         cudaMemcpy(d_params[i].data, h_params[i].data(), d_params[i].bytes, cudaMemcpyHostToDevice);
     };
 
@@ -253,13 +433,66 @@ int main() {
     // 7. Copy Output Data to Host and Print Sample
     cudaMemcpy(h_output_data.data(), d_output.data, d_output.bytes, cudaMemcpyDeviceToHost);
 
-    std::cout << "\n--- Sample Output Logits (First 5 tokens of first batch item) ---" << std::endl;
-    for (int i = 0; i < 5; ++i) {
-        std::cout << "Token " << i << ": [";
-        for (int j = 0; j < 5; ++j) {
-            std::cout << h_output_data[i * vocabSize + j] << (j == 4 ? "" : ", ");
+    // Check if we should run interactive generation
+    if (argc > 2 && std::string(argv[2]) == "--generate")
+    {
+        std::cout << "\n=== INTERACTIVE TEXT GENERATION ===" << std::endl;
+        std::cout << "Starting with prompt: \"" << inputText << "\"" << std::endl;
+        std::cout << "Generated text: ";
+
+        std::string generated = generateText(
+            tokenizer, inputText, 100, // Generate 100 characters
+            param_data_ptrs.data(),
+            param_shape_ptrs.data(),
+            param_dims_array.data(),
+            param_dtypes.data(),
+            (char *)d_workspace.data,
+            workspaceSize);
+        std::cout << "\n\nComplete generated text:\n"
+                  << generated << std::endl;
+    }
+    else
+    {
+        // Original behavior: show raw logits
+        std::cout << "\n--- Sample Output Logits (First 5 tokens of first batch item) ---" << std::endl;
+        for (int i = 0; i < 5; ++i)
+        {
+            std::cout << "Token " << i << ": [";
+            for (int j = 0; j < 5; ++j)
+            {
+                std::cout << h_output_data[i * vocabSize + j] << (j == 4 ? "" : ", ");
+            }
+            std::cout << "...]" << std::endl;
         }
-        std::cout << "...]" << std::endl;
+
+        // Show predicted characters for the input
+        if (!useFile)
+        {
+            std::cout << "\n--- Predicted Next Characters ---" << std::endl;
+            std::vector<int> encoded = tokenizer.encode(inputText);
+            int seq_len = std::min((int)encoded.size(), blockSize);
+
+            for (int pos = 0; pos < std::min(5, seq_len); pos++)
+            {
+                // Find the token with highest probability
+                float max_prob = -std::numeric_limits<float>::infinity();
+                int best_token = 0;
+                for (int v = 0; v < vocabSize; v++)
+                {
+                    float prob = h_output_data[pos * vocabSize + v];
+                    if (prob > max_prob)
+                    {
+                        max_prob = prob;
+                        best_token = v;
+                    }
+                }
+
+                char input_char = (pos < encoded.size()) ? tokenizer.idxToChar[encoded[pos]] : '?';
+                char predicted_char = tokenizer.idxToChar[best_token];
+                std::cout << "After '" << input_char << "' -> predicted: '" << predicted_char
+                          << "' (logit: " << max_prob << ")" << std::endl;
+            }
+        }
     }
 
     // 8. Free Memory
