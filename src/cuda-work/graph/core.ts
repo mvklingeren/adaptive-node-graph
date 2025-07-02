@@ -19,6 +19,7 @@ export interface CompilerConfig {
   memoryAlignment?: number;
   enableMemoryPooling?: boolean;
   verboseMemoryPlanning?: boolean;
+  enableInPlaceOptimization?: boolean;
 }
 
 // ============================================================================

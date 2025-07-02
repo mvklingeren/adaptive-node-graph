@@ -6,9 +6,17 @@
 import { CudaRuntime, CudaTensor, CudaKernel } from "../cuda-abstractions.js";
 import { CompilerConfig, CudaGraph, CudaNode } from "./core.js";
 import { generateKernelCode } from "./kernel-template.js";
+import {
+  createKernelConfigRegistry,
+  KernelConfigRegistry,
+  DEFAULT_CUDA_CONSTRAINTS,
+} from "./kernel-config/index.js";
+import { MemoryManager } from "./memory/index.js";
 
 export class CudaGraphCompiler {
   private config: CompilerConfig;
+  private kernelConfigRegistry: KernelConfigRegistry;
+  private memoryManager: MemoryManager;
 
   constructor(private runtime: CudaRuntime, config?: CompilerConfig) {
     this.config = {
@@ -18,8 +26,20 @@ export class CudaGraphCompiler {
       memoryAlignment: 256,
       enableMemoryPooling: true,
       verboseMemoryPlanning: true, // Enable verbose logging for memory planning
+      enableInPlaceOptimization: true,
       ...config,
     };
+
+    // Initialize the kernel configuration registry
+    this.kernelConfigRegistry = createKernelConfigRegistry();
+
+    // Initialize the new memory management system
+    this.memoryManager = new MemoryManager({
+      enableMemoryPooling: this.config.enableMemoryPooling!,
+      memoryAlignment: this.config.memoryAlignment!,
+      verboseMemoryPlanning: this.config.verboseMemoryPlanning!,
+      enableInPlaceOptimization: this.config.enableInPlaceOptimization!,
+    });
   }
 
   async compile(
@@ -91,7 +111,7 @@ export class CudaGraphCompiler {
     const filename = `generated-${graph.name}-kernel.cu`;
 
     const { intermediateTensors, workspaceSize, tensorRegistry, memoryPools } =
-      this.planMemory(graph, executionOrder);
+      this.memoryManager.planMemory(graph, executionOrder);
 
     const variableDeclarations: string[] = [];
     let intermediateIdx = 0;
@@ -209,7 +229,9 @@ export class CudaGraphCompiler {
         // Use calculated offset for proper memory reuse
         if (tensorInfo.offset >= 0) {
           tensorInstantiations.push(
-            `  // Pool: ${tensorInfo.poolId || "default"}, Offset: ${tensorInfo.offset}, Size: ${tensorInfo.size} bytes`
+            `  // Pool: ${tensorInfo.poolId || "default"}, Offset: ${
+              tensorInfo.offset
+            }, Size: ${tensorInfo.size} bytes`
           );
           tensorInstantiations.push(
             `  float* ${varName}_data = (float*)(allocator.allocate_at_offset(${tensorInfo.offset}, ${tensorInfo.size}));`
@@ -254,7 +276,8 @@ export class CudaGraphCompiler {
       executionCalls,
       graph,
       paramNameMapping,
-      generateParameterShapeDeclarations: this.generateParameterShapeDeclarations.bind(this),
+      generateParameterShapeDeclarations:
+        this.generateParameterShapeDeclarations.bind(this),
       generateParameterDims: this.generateParameterDims.bind(this),
     });
 
@@ -277,7 +300,11 @@ export class CudaGraphCompiler {
     const declarations: string[] = [];
 
     paramNames.forEach((paramName, i) => {
-      const tensor = this.findTensorByGlobalName(graph, paramName, paramNameMapping);
+      const tensor = this.findTensorByGlobalName(
+        graph,
+        paramName,
+        paramNameMapping
+      );
       if (tensor && tensor.shape) {
         declarations.push(
           `    const int param_shape_${i}[] = {${tensor.shape.join(
@@ -318,7 +345,11 @@ export class CudaGraphCompiler {
     paramNameMapping: Map<string, string>
   ): number[] {
     return paramNames.map((paramName) => {
-      const tensor = this.findTensorByGlobalName(graph, paramName, paramNameMapping);
+      const tensor = this.findTensorByGlobalName(
+        graph,
+        paramName,
+        paramNameMapping
+      );
       return tensor ? tensor.shape.length : 1;
     });
   }
@@ -339,7 +370,6 @@ export class CudaGraphCompiler {
     }
     return null;
   }
-
 
   private _setAndPropagateShapes(
     graph: CudaGraph,
@@ -826,242 +856,32 @@ export class CudaGraphCompiler {
   ): { gridDim: string; blockDim: string; sharedMemSize: number } {
     const primaryOutput = Array.from(node.outputs.values())[0];
     if (!primaryOutput) {
+      const defaultConfig = this.kernelConfigRegistry.getDefaultConfig(
+        [],
+        DEFAULT_CUDA_CONSTRAINTS,
+        this.config.defaultBlockSize!
+      );
       return {
-        gridDim: "dim3(1, 1, 1)",
-        blockDim: `dim3(${this.config.defaultBlockSize}, 1, 1)`,
-        sharedMemSize: 0,
+        gridDim: defaultConfig.gridDim,
+        blockDim: defaultConfig.blockDim,
+        sharedMemSize: defaultConfig.sharedMemSize,
       };
     }
 
     const shape = primaryOutput.shape;
 
-    switch (node.functionName) {
-      case "embedding_forward":
-        if (shape.length >= 3) {
-          const batchSize = shape[0];
-          const seqLen = shape[1];
-          const embedDim = shape[2];
-          const blockSize = Math.min(embedDim, 1024);
-          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
-          return {
-            gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
+    // Use the kernel configuration registry to get optimized launch parameters
+    const config = this.kernelConfigRegistry.getConfig(
+      node.functionName,
+      shape,
+      DEFAULT_CUDA_CONSTRAINTS,
+      this.config.defaultBlockSize!
+    );
 
-      case "positional_encoding_forward":
-        if (shape.length >= 3) {
-          const batchSize = shape[0];
-          const seqLen = shape[1];
-          const embedDim = shape[2];
-          const totalElements = batchSize * seqLen * embedDim;
-          const blockSize = this.config.defaultBlockSize!;
-          const gridSize = Math.ceil(totalElements / blockSize);
-          return {
-            gridDim: `dim3(${gridSize}, 1, 1)`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      case "dense_forward_2d":
-      case "cublas_dense_forward_2d":
-        if (shape.length === 2) {
-          const batchSize = shape[0];
-          const outputFeatures = shape[1];
-          const blockSize = this.config.defaultBlockSize!;
-          const gridX = Math.ceil(outputFeatures / blockSize);
-          return {
-            gridDim: `dim3(${Math.max(gridX, 1)}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      case "dense_forward_3d":
-      case "cublas_dense_forward_3d":
-        if (shape.length === 3) {
-          const batchSize = shape[0];
-          const seqLen = shape[1];
-          const outputFeatures = shape[2];
-          const blockSize = this.config.defaultBlockSize!;
-          const gridX = Math.ceil(outputFeatures / blockSize);
-          return {
-            gridDim: `dim3(${gridX}, ${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      case "split_heads_forward":
-        if (shape.length >= 4) {
-          const batchSize = shape[0];
-          const numHeads = shape[1];
-          const seqLen = shape[2];
-          const headDim = shape[3];
-          const blockSize = Math.min(headDim, 1024);
-          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
-          return {
-            gridDim: `dim3(${numHeads}, ${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      case "batched_matmul_transpose_b_tiled":
-      case "batched_matmul_tiled":
-        if (shape.length >= 4) {
-          const batchSize = shape[0];
-          const numHeads = shape[1];
-          const outputRows = shape[2];
-          const outputCols = shape[3];
-
-          const TILE_SIZE = 32;
-
-          const tilesM = Math.ceil(outputRows / TILE_SIZE);
-          const tilesN = Math.ceil(outputCols / TILE_SIZE);
-          const totalTiles = tilesM * tilesN;
-
-          const sharedMemSize = 2 * TILE_SIZE * (TILE_SIZE + 1) * 4;
-
-          return {
-            gridDim: `dim3(${totalTiles}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${TILE_SIZE}, ${TILE_SIZE}, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      case "softmax_forward":
-        if (shape.length === 2) {
-          const batchSize = shape[0];
-          const features = shape[1];
-          const blockSize = Math.min(
-            Math.max(96, Math.ceil(features / 32) * 32),
-            1024
-          );
-          return {
-            gridDim: `dim3(${batchSize}, 1, 1)`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: blockSize * 4,
-          };
-        } else if (shape.length === 4) {
-          const batchSize = shape[0];
-          const numHeads = shape[1];
-          const seqLen = shape[2];
-          const blockSize = Math.min(
-            Math.max(96, Math.ceil(seqLen / 32) * 32),
-            1024
-          );
-          return {
-            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: blockSize * 4,
-          };
-        }
-        break;
-
-      case "fused_scale_softmax_forward":
-        if (shape.length === 4) {
-          const batchSize = shape[0];
-          const numHeads = shape[1];
-          const seqLen = shape[2];
-          const blockSize = Math.min(
-            Math.max(128, Math.ceil(seqLen / 32) * 32),
-            1024
-          );
-          return {
-            gridDim: `dim3(${seqLen}, ${numHeads}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: blockSize * 4,
-          };
-        } else if (shape.length === 2) {
-          const batchSize = shape[0];
-          const features = shape[1];
-          const blockSize = Math.min(
-            Math.max(96, Math.ceil(features / 32) * 32),
-            1024
-          );
-          return {
-            gridDim: `dim3(${batchSize}, 1, 1)`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: blockSize * 4,
-          };
-        }
-        break;
-
-      case "layer_norm_forward":
-        if (shape.length >= 3) {
-          const batchSize = shape[0];
-          const seqLen = shape[1];
-          const featureCount = shape[2];
-          const blockSize = Math.min(
-            Math.max(128, Math.ceil(featureCount / 32) * 32),
-            1024
-          );
-          return {
-            gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${blockSize}, 1, 1)`,
-            sharedMemSize: blockSize * 4,
-          };
-        }
-        break;
-
-      case "scale_forward":
-      case "add_forward":
-      case "relu_forward":
-        const totalElements = shape.reduce((a, b) => a * b, 1);
-        const blockSize = this.config.defaultBlockSize!;
-        const gridSize = Math.ceil(totalElements / blockSize);
-        return {
-          gridDim: `dim3(${gridSize}, 1, 1)`,
-          blockDim: `dim3(${blockSize}, 1, 1)`,
-          sharedMemSize: 0,
-        };
-
-      case "concat_heads_forward":
-        if (shape.length >= 3) {
-          const batchSize = shape[0];
-          const seqLen = shape[1];
-          const embedDim = shape[2];
-          const numHeads = 6;
-          const headDim = embedDim / numHeads;
-          return {
-            gridDim: `dim3(${seqLen}, ${batchSize})`,
-            blockDim: `dim3(${embedDim}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-        break;
-
-      default:
-        if (shape.length >= 2) {
-          const batchSize = shape[0];
-          const features = shape[shape.length - 1];
-          const blockSize = Math.min(features, this.config.defaultBlockSize!);
-          const alignedBlockSize = Math.ceil(blockSize / 32) * 32;
-          const gridSize = Math.ceil(features / alignedBlockSize);
-          return {
-            gridDim: `dim3(${gridSize}, ${batchSize})`,
-            blockDim: `dim3(${Math.min(alignedBlockSize, 1024)}, 1, 1)`,
-            sharedMemSize: 0,
-          };
-        }
-    }
-
-    const totalElements = shape.reduce((a, b) => a * b, 1);
-    const blockSize = this.config.defaultBlockSize!;
-    const gridSize = Math.ceil(totalElements / blockSize);
     return {
-      gridDim: `dim3(${Math.min(gridSize, 65535)}, 1, 1)`,
-      blockDim: `dim3(${blockSize}, 1, 1)`,
-      sharedMemSize: 0,
+      gridDim: config.gridDim,
+      blockDim: config.blockDim,
+      sharedMemSize: config.sharedMemSize,
     };
   }
 
